@@ -29,18 +29,19 @@ Set a real SEC-compliant identity before downloading filings. The value must inc
 
 ```powershell
 $env:SEC_USER_AGENT = "FinancialAgent your-email@example.com"
-python -m finagent download-market --output data/market/csi300.csv --start-year 2005
+python -m finagent download-markets --output-dir data/market --start-year 2005
 python scripts/download_sec_10k.py --years 1 --output-dir sample_docs/sec_10k
 python -m finagent index --docs-dir sample_docs/sec_10k --output data/index/filing_chunks.json
 ```
 
-The first SEC download collects ten companies' latest 10-Ks. To collect five annual filings per company, use `--years 5`; allow more time and ensure the identity is your own. Raw downloaded documents and generated data are deliberately ignored by Git, but the commands reproduce them without hidden steps.
+`download-markets` requests CSI 300, Shanghai Composite, and Shenzhen Component as separate auditable files. Each request can also be retried independently with `download-market --symbol sh000001` or `--symbol sz399001`. The first SEC download collects ten companies' latest 10-Ks. To collect five annual filings per company, use `--years 5`; allow more time and ensure the identity is your own. Raw downloaded documents and generated data are deliberately ignored by Git, but the commands reproduce them without hidden steps.
 
 Run an offline, fully cited demo without any model key:
 
 ```powershell
 python -m finagent ask "Summarize liquidity and debt-related risks." --company Apple --user demo-reviewer --trace
 python -m finagent market --file data/market/csi300.csv --start 2006-07-10 --end 2026-07-10
+python -m finagent market --file data/market/sse_composite.csv --start 2006-07-10 --end 2026-07-10
 ```
 
 To also search public web results, make that choice visible in the answer:
@@ -76,7 +77,7 @@ If a remote call fails or its answer has no valid evidence label, the agent fall
 
 | Dataset | Loader | Local artefacts | Evidence fields |
 | --- | --- | --- | --- |
-| CSI 300 daily close and volume | Tencent Finance K-line endpoint, annual windows | `data/market/csi300.csv`, `.meta.json` | source endpoint, every request URL, download timestamp, coverage, row count |
+| CSI 300, Shanghai Composite, Shenzhen Component daily close and volume | Tencent Finance K-line endpoint, annual windows | `data/market/csi300.csv`, `sse_composite.csv`, `szse_component.csv`, each with `.meta.json` | source endpoint, every request URL, download timestamp, coverage, row count |
 | SEC 10-K filings | `data.sec.gov` submissions plus SEC Archives | `sample_docs/sec_10k/*.html`, `manifest.jsonl`, `download_report.json` | ticker, CIK, form, filing/report date, accession, primary document, archive URL, fetch time |
 | Filing chunks | local HTML-to-text + deterministic chunker | `data/index/filing_chunks.json` | chunk/document ID, text, source URL, date, source type, accession locator |
 | Public web | DuckDuckGo HTML query, only with `--web` | in-memory for this request | result URL, title, result snippet, `web_search` source type |
@@ -113,4 +114,4 @@ The test suite covers source-preserving chunks, relevant retrieval and citations
 
 ## Design and limits
 
-Read [DESIGN.md](DESIGN.md) for architecture, tradeoffs, failure modes, and prioritized next work. The key limitations are lexical rather than semantic retrieval, flattening of complex SEC tables, non-authoritative search snippets, a local single-process memory store, and no claim that offline extraction is a model-generated analysis.
+Read [DESIGN.md](DESIGN.md) for architecture, tradeoffs, failure modes, and prioritized next work. [PROJECT_FILES_CN.md](PROJECT_FILES_CN.md) is the complete Chinese file-and-operation reference; [REMEDIATION_CN.md](REMEDIATION_CN.md) maps the external review to implementation decisions. The key limitations are lexical rather than semantic retrieval, flattening of complex SEC tables, non-authoritative search snippets, a local single-process memory store, and no claim that offline extraction is a model-generated analysis.

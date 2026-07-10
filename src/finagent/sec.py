@@ -103,7 +103,14 @@ def download_sec_10k(
             errors.append(f"{ticker}: {type(exc).__name__}: {exc}")
 
     manifest = output_dir / "manifest.jsonl"
-    manifest.write_text("".join(json.dumps(asdict(record), ensure_ascii=False) + "\n" for record in records), encoding="utf-8")
+    existing_records = _read_manifest(manifest)
+    combined_records = {record["document_id"]: record for record in existing_records}
+    for record in records:
+        combined_records.setdefault(record.document_id, asdict(record))
+    manifest.write_text(
+        "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in combined_records.values()),
+        encoding="utf-8",
+    )
     (output_dir / "download_report.json").write_text(json.dumps({
         "downloaded_at": datetime.now(UTC).isoformat(),
         "requested_companies": len(companies),
@@ -123,3 +130,20 @@ def _get_bytes(url: str, user_agent: str) -> bytes:
     request = Request(url, headers={"User-Agent": user_agent})
     with urlopen(request, timeout=60) as response:
         return response.read()
+
+
+def _read_manifest(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    records: list[dict[str, object]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid manifest JSON at line {line_number}: {path}") from exc
+        if not isinstance(record, dict) or not isinstance(record.get("document_id"), str):
+            raise ValueError(f"Manifest record at line {line_number} has no document_id: {path}")
+        records.append(record)
+    return records

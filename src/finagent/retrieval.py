@@ -9,11 +9,19 @@ from typing import Iterable
 
 from finagent.sources import Citation, EvidenceChunk, SearchResult
 
-TOKEN_RE = re.compile(r"[a-z0-9]+(?:[-'][a-z0-9]+)?|[\u4e00-\u9fff]{2,}", re.IGNORECASE)
+TOKEN_RE = re.compile(r"[a-z0-9]+(?:[-'][a-z0-9]+)?|[\u4e00-\u9fff]+", re.IGNORECASE)
 
 
 def tokenize(text: str) -> list[str]:
-    return TOKEN_RE.findall(text.lower())
+    tokens: list[str] = []
+    for match in TOKEN_RE.findall(text.lower()):
+        if "\u4e00" <= match[0] <= "\u9fff":
+            tokens.extend(match[index:index + 2] for index in range(len(match) - 1))
+            if len(match) == 1:
+                tokens.append(match)
+        else:
+            tokens.append(match)
+    return tokens
 
 
 def chunk_document(

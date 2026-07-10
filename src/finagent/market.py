@@ -10,6 +10,12 @@ from urllib.request import Request, urlopen
 
 
 TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+MAJOR_A_SHARE_INDEXES: dict[str, str] = {
+    "csi300": "sh000300",
+    "sse_composite": "sh000001",
+    "szse_component": "sz399001",
+}
+REQUIRED_MARKET_COLUMNS = {"date", "close", "volume"}
 
 
 @dataclass(frozen=True)
@@ -33,6 +39,8 @@ def download_index_history(
 ) -> int:
     """Download annual windows because the Tencent endpoint caps each response at 640 rows."""
     end_year = end_year or date.today().year
+    if start_year > end_year:
+        raise ValueError("start_year cannot be after end_year")
     rows: dict[str, dict[str, str]] = {}
     requests_made: list[str] = []
     for year in range(start_year, end_year + 1):
@@ -70,9 +78,27 @@ def download_index_history(
     return len(rows)
 
 
+def download_major_indices(output_dir: Path, *, start_year: int = 2005, end_year: int | None = None) -> dict[str, int]:
+    """Download the core mainland China index set using one auditable file per index."""
+    return {
+        dataset: download_index_history(
+            output_dir / f"{dataset}.csv",
+            symbol=symbol,
+            start_year=start_year,
+            end_year=end_year,
+        )
+        for dataset, symbol in MAJOR_A_SHARE_INDEXES.items()
+    }
+
+
 def market_snapshot(path: Path, *, start: str | None = None, end: str | None = None) -> MarketSnapshot:
     with path.open(encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
+        reader = csv.DictReader(handle)
+        fieldnames = set(reader.fieldnames or [])
+        missing_columns = REQUIRED_MARKET_COLUMNS - fieldnames
+        if missing_columns:
+            raise ValueError(f"Market CSV missing required columns: {', '.join(sorted(missing_columns))}")
+        rows = list(reader)
     selected = [row for row in rows if (start is None or row["date"] >= start) and (end is None or row["date"] <= end)]
     if len(selected) < 2:
         raise ValueError("At least two market observations are required for the requested period")

@@ -9,6 +9,9 @@ from pathlib import Path
 from finagent.retrieval import chunk_document, write_chunks
 from finagent.sources import EvidenceChunk
 
+XBRL_NOISE_MARKERS = ("http://fasb.org", "xbrli:", "us-gaap:", "xmlns", "dei:", "linkbase")
+IGNORED_HTML_TAGS = {"script", "style", "noscript", "ix:header", "ix:hidden", "ix:references", "ix:resources", "xbrli:context", "xbrli:unit"}
+
 
 class _FilingHTMLTextParser(HTMLParser):
     def __init__(self) -> None:
@@ -17,13 +20,13 @@ class _FilingHTMLTextParser(HTMLParser):
         self._ignored_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in {"script", "style", "noscript"}:
+        if tag in IGNORED_HTML_TAGS:
             self._ignored_depth += 1
         elif tag in {"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4"}:
             self.parts.append(" ")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"script", "style", "noscript"} and self._ignored_depth:
+        if tag in IGNORED_HTML_TAGS and self._ignored_depth:
             self._ignored_depth -= 1
         elif tag in {"p", "div", "tr", "li"}:
             self.parts.append(" ")
@@ -40,6 +43,12 @@ def html_to_text(raw: str) -> str:
         "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-",
     }))
     return re.sub(r"\s+", " ", text).strip()
+
+
+def is_xbrl_noise(text: str) -> bool:
+    """Reject schema/context boilerplate while retaining normal filing prose about XBRL."""
+    lowered = text.lower()
+    return sum(marker in lowered for marker in XBRL_NOISE_MARKERS) >= 2
 
 
 def build_filing_index(documents_dir: Path, output_path: Path, *, chunk_size: int = 1_400) -> tuple[int, int]:
@@ -68,7 +77,7 @@ def build_filing_index(documents_dir: Path, output_path: Path, *, chunk_size: in
         if len(text) < 400:
             continue
         documents += 1
-        chunks.extend(chunk_document(
+        document_chunks = chunk_document(
             document_id=record["document_id"],
             title=f"{record['company']} {record['form']} ({record['report_date'] or record['filing_date']})",
             text=text,
@@ -78,7 +87,8 @@ def build_filing_index(documents_dir: Path, output_path: Path, *, chunk_size: in
             locator=f"accession {record['accession_number']}",
             chunk_size=chunk_size,
             overlap=overlap,
-        ))
+        )
+        chunks.extend(chunk for chunk in document_chunks if not is_xbrl_noise(chunk.text))
     if not chunks:
         raise RuntimeError("No usable filing text was indexed. Inspect download_report.json for failed downloads.")
     write_chunks(chunks, output_path)

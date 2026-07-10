@@ -27,7 +27,7 @@ class PreferenceStore:
 
     def record(self, user_id: str, message: str) -> list[str]:
         lowered = message.lower()
-        intent = re.search(r"\b(i care|focus|prefer|priority|important to me)\b|关注|重视|偏好", lowered, re.IGNORECASE)
+        intent = re.search(r"\b(i care|focus|prefer|priority|important to me|i'?m interested in|i am interested in|interested in)\b|关注|重视|偏好|感兴趣", lowered, re.IGNORECASE)
         if not intent:
             return self.get(user_id)
         found = sorted(name for name, pattern in PREFERENCE_PATTERNS.items() if re.search(pattern, lowered, re.IGNORECASE))
