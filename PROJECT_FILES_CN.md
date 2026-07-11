@@ -16,8 +16,8 @@
 | `requirements-dev.txt` | 可选 `pytest`、`coverage` 开发依赖；运行时无第三方依赖 | 是 |
 | `README.md` | GitHub 首页的中文安装、配置、数据下载、命令、数据来源和限制说明 | 是 |
 | `README_EN.md` | 英文安装、配置、数据下载、命令、数据来源和限制说明 | 是 |
-| `DESIGN.md` | 英文 1-2 页系统设计、取舍、失败模式与后续路线 | 是 |
-| `DEMO_OUTPUTS.md` | 实际运行与确定性测试产生的示例输出 | 是 |
+| `DESIGN.md` | 中文 1-2 页系统设计、取舍、失败模式与后续路线 | 是 |
+| `DEMO_OUTPUTS.md` | 中文说明的实际运行与确定性测试示例输出 | 是 |
 | `PROJECT_FILES_CN.md` | 本文件，中文文件级和运行级说明 | 是 |
 | `REMEDIATION_CN.md` | 对审查意见的逐项采纳、延期和依据 | 是 |
 | `scripts/download_sec_10k.py` | 保留题目期望的 SEC 下载脚本入口，内部转发到 CLI | 是 |

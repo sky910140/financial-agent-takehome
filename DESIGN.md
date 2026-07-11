@@ -1,56 +1,60 @@
-# System Design
+# 系统设计说明
 
-## Goal and boundary
+## 目标与边界
 
-The system is a personal financial research agent, not an autonomous trading or recommendation system. Its core promise is narrower: for a question about a supported filing or market dataset, it returns evidence that a reviewer can navigate back to. This prioritizes traceability over a broad but unverifiable tool catalogue.
+本系统是金融研究 Personal Agent，不是自动交易系统，也不输出投资建议。它的承诺刻意收窄：对于已支持的 filing 或市场数据问题，返回可让 reviewer 回溯的证据。这一取舍优先保证可追溯性，而不是堆叠大量无法验证的工具。
 
-The supported corpus is ten named public companies' SEC 10-Ks plus CSI 300, Shanghai Composite, and Shenzhen Component daily close and volume from 2005 onward. An opt-in web-search tool gives the agent a way to discover public information, but its result snippet is never silently mixed with primary filings. Every source says whether it is `sec_10k`, `market_data`, or `web_search`.
+当前语料为十家指定公司的 SEC 10-K，以及自 2005 年起的沪深 300、上证综指、深证成指每日收盘价与成交量。可选 Web 搜索用于发现公开信息，但其结果摘要绝不会被静默混入一级 filing 证据。每一条来源都会明确标记为 `sec_10k`、`market_data` 或 `web_search`。
 
 ```mermaid
 flowchart LR
-  Q["Question + user ID"] --> M["Preference store"]
-  M --> P["DeepSeek V4: research plan"]
-  P --> R["Local BM25 retrieval"]
-  D["SEC 10-K chunks / CSI 300 CSV / optional web"] --> R
-  R --> A["doubao-seed-evolving: evidence-bound draft"]
-  A --> V["DeepSeek V4: citation verification"]
-  V --> O["Markdown / JSON / HTML report + source list + trace"]
+  Q["问题 + 用户 ID"] --> M["偏好记忆"]
+  M --> P["DeepSeek V4：检索规划"]
+  P --> R["本地 BM25 检索"]
+  D["SEC 10-K chunks / 指数 CSV / 可选 Web"] --> R
+  R --> A["doubao-seed-evolving：受证据约束的起草"]
+  A --> V["DeepSeek V4：引用核验"]
+  V --> O["Markdown / JSON / HTML 报告 + 来源 + trace"]
 ```
 
-## Data ingestion and provenance
+## 数据接入与溯源
 
-The SEC downloader first queries each company's `data.sec.gov/submissions` feed, selects `10-K` rows, then downloads the primary document from SEC Archives. It enforces a SEC-style User-Agent containing a contact email. The append-only `manifest.jsonl` records CIK, ticker, form, filing/report dates, accession number, archive URL, local path, and fetch time. The corresponding raw HTML is retained locally. If a company fails, `download_report.json` exposes it instead of presenting an incomplete corpus as complete.
+SEC 下载器先查询每家公司的 `data.sec.gov/submissions` feed，从中选择 `10-K` 记录，再从 SEC Archives 下载主文档。它强制要求符合 SEC 规范、且含联系邮箱的 User-Agent。追加式 `manifest.jsonl` 会记录 CIK、ticker、form、filing/report date、accession number、archive URL、本地路径和抓取时间；原始 HTML 随之保存在本地。任一公司下载失败时，`download_report.json` 会暴露失败，而不会将不完整语料伪装成完整结果。
 
-CSI 300 data comes from Tencent Finance's public K-line endpoint. The endpoint caps a response, so the loader requests one calendar year at a time. It writes normalized `date,close,volume` CSV plus a metadata sidecar with source endpoint, all request URLs, download time, row count, and coverage. Calculated period changes always cite that data file and source endpoint, rather than relying on a model calculation.
+沪深 300、上证综指和深证成指数据来自腾讯财经公开 K 线端点。由于单次响应有行数上限，下载器按自然年分段请求；输出规范化的 `date,close,volume` CSV，并写入 metadata sidecar，其中包含来源端点、全部请求 URL、下载时间、行数与覆盖区间。区间涨跌由程序计算，始终引用数据文件和来源端点，不依赖模型计算。
 
-The indexer strips script/style content, hidden inline-XBRL header/resources, and high-density schema/context boilerplate before it splits text into overlapping chunks. Each chunk carries document and chunk IDs, title, source URL, filing date, source type, and accession locator. Those fields survive retrieval; the final source list renders both accession and chunk ID. This supports three debugging questions: “which document?”, “where on the public site?”, and “which exact retrieval fragment?”
+索引器会移除 script/style、隐藏的 inline-XBRL header/resources 及高密度 schema/context 模板噪声，再把正文切为重叠 chunk。每个 chunk 保留文档与 chunk ID、标题、来源 URL、filing date、来源类型和 accession locator。这些字段会穿过检索流程，并在最终来源列表中显示 accession 与 chunk ID，支持回答三个排障问题：来自哪份文档、公开网站上的位置在哪里、实际命中了哪个检索片段。
 
-## Retrieval, reasoning, and memory
+## 检索、推理与记忆
 
-Retrieval is deterministic BM25-style lexical scoring. English is tokenized by word and Chinese text by overlapping character bigrams, so a query such as `上海证券交易所` has several matchable terms instead of one all-or-nothing token. It is deliberately simpler than a vector database: the corpus is small, score inputs are inspectable, it runs with no hosted dependency, and it gives an offline demo path. A user can scope the corpus before retrieval with `--company`. User preferences are a separate JSON document keyed by user ID. The memory only writes when language explicitly signals a preference (for example, “I care”, “I'm interested in”, “focus”, or “关注”), avoiding the common failure where every question becomes permanent memory. It recognizes a small auditable preference vocabulary: liquidity risk, debt maturity, cash flow, profitability, competition, and valuation.
+检索使用确定性的 BM25 词法评分。英文按词切分，中文按重叠字符 bigram 切分，因此 `上海证券交易所` 这类查询会产生多个可匹配 term，而不是整句全有或全无。没有选向量数据库是刻意取舍：当前语料规模小，评分输入可检查，无托管服务依赖，并能离线演示。用户可通过 `--company` 先缩小语料范围。
 
-The required two-model collaboration has distinct jobs. DeepSeek V4 makes a bounded research plan and independently verifies the final draft's citation labels. `doubao-seed-evolving` writes the filing analysis from supplied evidence. The planner is not ceremonial: its output is restricted to at most 24 lexical retrieval tokens, appended to the original question and explicit preferences before BM25 runs. It can improve a vague question such as “What should I focus on?” by supplying `liquidity`, `debt`, and `maturity`, but it cannot introduce evidence or final claims. Prompts prohibit outside facts and require `[S#]` labels. Each remote request has a 600-token completion budget so the three serial stages remain usable in an interactive CLI; source evidence is not truncated by that output cap. A final guard rejects remote prose if it has no valid supplied citations; the system emits an offline extractive answer instead. The trace reveals whether each stage used a remote model without revealing credentials.
+用户偏好独立保存在以 user ID 为键的 JSON 中。只有明确表达偏好时才写入，例如 “I care”、“I'm interested in”、“focus” 或“关注”；普通提问不会变成永久记忆。当前只识别可审计的小型白名单：liquidity risk、debt maturity、cash flow、profitability、competition 和 valuation。这样做会漏掉一些细腻的偏好，但避免每轮问题都污染长期记忆。
 
-The verifier has a concrete, testable job rather than an aspirational one. The integration test feeds a cited liquidity chunk, a planner term list, an uncited Doubao draft, and a DeepSeek verifier response. The final answer is the verifier's cited `[S1]` rewrite, not the unsupported draft. This does not claim a measured quality delta between providers; it demonstrates the intended control boundary. Removing Doubao would remove the independently specialized drafting step, while removing the verifier would allow a cited-looking but unsupported draft to reach the user. A production comparison would require a labelled evaluation set and is intentionally not fabricated for this take-home.
+两个指定模型承担不同职责。DeepSeek V4 生成受限检索计划，并独立核验最终草稿的引用标签；`doubao-seed-evolving` 仅根据提供的证据起草分析。规划器并非形式化步骤：其输出最多取 24 个 lexical retrieval token，追加到原问题和显式偏好后才进入 BM25。对于“我应该重点关注什么？”这类模糊问题，它可以补充 `liquidity`、`debt`、`maturity` 等检索词；但它不能引入证据或形成最终主张。提示词禁止外部事实，并要求使用 `[S#]` 标签。
 
-I considered a general ReAct loop with arbitrary tools and autonomous retries, and a vector database plus embeddings. I did not choose either for this submission. They broaden functionality but add hidden model decisions, embedding provenance, service dependencies, and difficult-to-reproduce ranking. The constrained loop is easier to demonstrate live and easier to defend in an interview.
+每次远程请求设有 600-token 输出预算，使三个串行阶段在交互式 CLI 中保持可用；这一预算不截断传给模型的检索证据。最终程序守卫会拒绝没有合法来源标签的远程文本，并回退到离线提取式回答。trace 只显示每阶段是否实际使用远程模型，不泄露密钥。
 
-## Known limits and failure modes
+验证器是可测试的控制点，而不是抽象口号。集成测试向其提供一条带引用的流动性证据、规划词、无引用的 Doubao 草稿和 DeepSeek 的核验结果；最终答案采用带 `[S1]` 的核验改写，而不是无依据草稿。这并不声称两个模型存在未经测量的质量差异，而是证明控制边界有效。移除 Doubao 会失去独立的专业化起草阶段；移除验证器则会让貌似带引用但其实不受支持的草稿到达用户。生产环境中的模型对比应使用标注评测集，本项目不虚构该结论。
 
-- BM25 may miss semantically relevant language with little term overlap, even with Chinese bigrams. For example, a query using `top-line pressure` may not retrieve a passage that only says `revenue decline`; the demo documents this as a known lexical failure rather than hiding it. It also does not understand financial-table structure.
-- HTML flattening can join table cells or damage unusual legacy character encodings. Citation links still let a user inspect the original filing.
-- SEC filings can be amended, issuer names can change, and recent-submission feeds do not necessarily expose an arbitrary long history. The manifest exposes the selected accession and dates.
-- Web results are snippets, may change or be low quality, and are not a substitute for opening the target page. They remain opt-in and separately typed.
-- Preference extraction is intentionally narrow. It may miss nuanced preferences and does not infer profile data.
-- The local JSON store has no encryption, authentication, concurrency control, retention policy, or user deletion endpoint. It is suitable for a single-user demo only.
-- Remote APIs may fail, rate-limit, or use a model deployment name that differs from the configured default. The answer transparently falls back instead of concealing that failure.
-- The HTML report is deliberately a static, stdlib-only presentation layer: all dynamic content is escaped, only absolute HTTP(S) source URLs become links, and a restrictive CSP meta policy is embedded. It is not an interactive web application and does not render arbitrary Markdown or user HTML.
-- This system does not provide investment advice, execute trades, retrieve live security-level A-share prices, or guarantee numerical extraction from SEC tables.
+我考虑过带任意工具和自主重试的通用 ReAct loop，以及向量数据库加 embedding。它们能扩展功能面，却增加隐藏的模型决策、embedding 溯源、服务依赖和难以复现的排序。这个受约束的 loop 更适合现场演示，也更容易在面试中说明取舍。
 
-## First improvements with more time
+## 已知限制与失败模式
 
-1. Add XBRL-aware statement extraction and table provenance. This would most improve year-over-year revenue, margin, debt maturity, and cash-flow answers because every number could link to a fact, unit, period, and filing context.
-2. Add a hybrid retriever: financial-domain embeddings plus BM25, reranking, evaluation sets, and per-query retrieval diagnostics. This addresses vocabulary mismatch while retaining lexical explainability.
-3. Expand market ingestion to major A-share indices and individual securities with vendor/source health checks, trading-calendar validation, adjustment semantics, and data freshness alerts.
-4. Make memory a proper user-owned store with authentication, encryption, edit/delete controls, expiration, and explicit consent. The current JSON format is intentionally visible but not production-grade.
-5. Add automated source regression tests, model-output citation precision/recall checks, and an evaluation dashboard before increasing the number of tools or documents.
+- 即使有中文 bigram，BM25 仍可能漏掉词面重叠很少但语义相关的段落。例如 `top-line pressure` 未必能召回只写了 `revenue decline` 的文字；demo 公开展示这一词法失败，而非隐藏它。它也不理解复杂财务表格的列关系。
+- HTML 展平可能把表格单元格拼接，或破坏罕见的旧字符编码。引用链接仍允许用户打开原始 filing 核验。
+- SEC filing 可能修订、发行人名称可能变化，recent-submission feed 也不一定暴露任意长的历史；manifest 会明确记录本次选中的 accession 与日期。
+- Web 结果是可变且质量不一的摘要，不能替代打开目标页面；它们始终是 opt-in 且独立标注的来源。
+- 偏好提取故意保持保守，可能遗漏细腻表达，也不推断用户画像。
+- 本地 JSON 记忆没有加密、认证、并发控制、保留策略或用户删除入口，只适用于单用户 demo。
+- 远程 API 可能失败、限流，或要求不同的模型部署名称。系统会透明地回退，而不是掩盖失败。
+- HTML 报告是仅用标准库实现的静态展示层：所有动态内容都会转义，只有绝对 HTTP(S) 来源 URL 能成为链接，并嵌入限制性 CSP meta 策略。它不是交互式 Web 应用，也不渲染任意 Markdown 或用户 HTML。
+- 本系统不提供投资建议、不执行交易、不获取实时 A 股个股数据，也不保证能从 SEC 复杂表格中准确抽取数值。
+
+## 更多时间时的优先改进
+
+1. 增加 XBRL-aware 报表抽取与表格溯源。这会首先改善同比收入、利润率、债务到期和现金流回答，因为每个数字都能链接到 fact、单位、期间和 filing context。
+2. 增加混合检索：金融领域 embedding + BM25、reranker、评测集和逐查询检索诊断。它能缓解词汇失配，同时保留词法可解释性。
+3. 扩展市场接入至更多主要 A 股指数和个股，同时加入数据源健康检查、交易日历校验、复权语义与新鲜度告警。
+4. 将记忆升级为真正用户拥有的存储：认证、加密、编辑/删除、过期与显式同意。当前 JSON 的可见性是为了 demo 可解释性，而不是生产安全性。
+5. 在增加工具或文档之前，先增加自动化来源回归测试、模型输出的引用 precision/recall 检查和评测面板。
