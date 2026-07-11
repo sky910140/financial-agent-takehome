@@ -126,6 +126,25 @@ class FinancialAgentTests(unittest.TestCase):
         self.assertFalse(result.used_remote_model)
         self.assertEqual(result.error, "HTTP 404: remote request unavailable")
 
+    def test_model_gateway_caps_completion_length_for_interactive_latency(self) -> None:
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+                return None
+
+            @staticmethod
+            def read() -> bytes:
+                return b'{"choices": [{"message": {"content": "[S1] concise answer"}}]}'
+
+        with patch("finagent.models.urlopen", return_value=FakeResponse()) as urlopen:
+            result = ModelGateway(doubao_api_key="test-key", deepseek_api_key=None).complete("doubao", "system", "user")
+
+        payload = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertTrue(result.used_remote_model)
+        self.assertEqual(payload["max_tokens"], 600)
+
     def test_index_and_agent_produce_an_offline_cited_answer(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

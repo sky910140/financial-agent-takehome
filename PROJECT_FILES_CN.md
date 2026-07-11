@@ -25,7 +25,7 @@
 | `src/finagent/__main__.py` | 支持 `python -m finagent` | 是 |
 | `src/finagent/cli.py` | argparse 命令、UTF-8 控制台配置、错误边界、Markdown/JSON 输出 | 是 |
 | `src/finagent/agent.py` | Agent 编排、规划检索扩展、市场/Web 证据、草稿/核验守卫、引用渲染 | 是 |
-| `src/finagent/models.py` | 仅配置 `doubao-seed-evolving` 与 `deepseek-v4-pro` 的 OpenAI 兼容 HTTP 调用和离线降级 | 是 |
+| `src/finagent/models.py` | 仅配置 `doubao-seed-evolving` 与 `deepseek-v4-pro` 的 OpenAI 兼容 HTTP 调用、600-token 输出预算和离线降级 | 是 |
 | `src/finagent/retrieval.py` | 中英文 tokenizer、BM25、chunk、索引 JSON 读写 | 是 |
 | `src/finagent/ingest.py` | SEC HTML 文本化、排版归一化、inline-XBRL 噪声过滤和索引构建 | 是 |
 | `src/finagent/sec.py` | 十家公司配置、SEC User-Agent 验证、下载、manifest 保护性追加 | 是 |
@@ -111,7 +111,7 @@ python -m unittest discover -s tests -v
 python -m compileall -q src scripts tests
 ```
 
-当前 26 项测试覆盖：chunk 来源字段、BM25 排序、中文 bigram、市场快照与坏 CSV、三大指数批量参数、显式偏好与持久化、离线模型状态、规划词影响检索、核验改写草稿、SEC User-Agent、manifest 历史记录保留、XBRL 噪声识别、索引到 Agent、Web URL 解包、Web 证据类型、UTF-8 控制台配置、CLI 友好错误和市场数据 warning、`verify-models` 的成功/失败退出码，以及在存在本地 `.env` 时仍保持测试离线的隔离保护。没有把网络请求写入单元测试；这些调用以 mock 隔离，真实命令记录在 `DEMO_OUTPUTS.md`。
+当前 27 项测试覆盖：chunk 来源字段、BM25 排序、中文 bigram、市场快照与坏 CSV、三大指数批量参数、显式偏好与持久化、离线模型状态、模型请求的 600-token 输出预算、规划词影响检索、核验改写草稿、SEC User-Agent、manifest 历史记录保留、XBRL 噪声识别、索引到 Agent、Web URL 解包、Web 证据类型、UTF-8 控制台配置、CLI 友好错误和市场数据 warning、`verify-models` 的成功/失败退出码，以及在存在本地 `.env` 时仍保持测试离线的隔离保护。没有把网络请求写入单元测试；这些调用以 mock 隔离，真实命令记录在 `DEMO_OUTPUTS.md`。
 
 ## 9. 已知限制与现场使用建议
 

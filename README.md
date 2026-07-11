@@ -82,6 +82,7 @@ python -m finagent verify-models
 ```
 
 It sends only a fixed `READY` connectivity prompt to each provider and exits with code 2 when either required model is unavailable.
+Every remote completion has a 600-token output budget. This keeps the three sequential stages practical for an interactive CLI; it does not truncate the retrieved source evidence supplied to the models.
 
 ## Data and provenance
 

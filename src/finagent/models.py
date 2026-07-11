@@ -7,6 +7,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
+MAX_COMPLETION_TOKENS = 600
+
+
 @dataclass(frozen=True)
 class ModelResponse:
     provider: str
@@ -52,6 +55,8 @@ class ModelGateway:
         payload = json.dumps({
             "model": settings["model"],
             "temperature": 0,
+            # Keep the three sequential model stages responsive for an interactive CLI.
+            "max_tokens": MAX_COMPLETION_TOKENS,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }).encode("utf-8")
         request = Request(

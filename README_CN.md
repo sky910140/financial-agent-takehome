@@ -73,6 +73,8 @@ python -m finagent verify-models
 
 它只向两家 provider 发送固定的 `READY` 连通性请求，不发送 10-K、市场数据、用户问题或偏好。两行都显示 `Verified ...` 后，再运行完整 Agent demo。若任一家不可用，命令返回退出码 2。
 
+每次远程完成请求均设置 600 token 输出预算。它用于保证三个串行阶段在 CLI 中保持可接受的响应时间，不会截断传给模型的检索证据。
+
 完整远程运行时，`--trace` 应显示：
 
 ```text
