@@ -41,5 +41,5 @@
     "volume_basis": "source-native units; not normalized across indices",
     "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations"
   },
-  "sha256": "83a2fbcec3ec8a52d7ebffcab26071b62e34b799d7e2f94f6a21747af2c41c90"
+  "sha256": "215d50b9ce8a13f526c3617689e72f8c60d988cf6d23dd10ae27bbe1a2a9aa88"
 }

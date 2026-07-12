@@ -16,7 +16,7 @@ This project does not provide investment advice, execute trades, or treat model 
 | China market data | CSI 300, Shanghai Composite, Shenzhen Component, 20+ years of daily close and volume |
 | Retrieval evaluation | 5 golden questions, Hit@5 = 5/5 |
 | Golden answer audit | 3 Q&A cases, 6/6 sentences verified against cited evidence phrases |
-| Automated tests | 59/59 passing, 88% total coverage |
+| Automated tests | 60/60 passing, 88% total coverage |
 | Python compatibility | 3.11, 3.13, and 3.14 verified locally |
 | Multi-model path | DeepSeek planning → Doubao drafting → DeepSeek verification |
 | Strict remote path | Doubao + DeepSeek three-stage smoke reached `remote_verified` |
@@ -227,7 +227,7 @@ GitHub Actions runs compilation, coverage, retrieval evaluation, golden-answer v
 src/finagent/                 Agent, retrieval, models, data, memory, and output
 src/finagent/integrity.py     SEC/market snapshot and integrity gates
 scripts/                      SEC and market download entry points
-tests/                        59 unit, integration, and review-readiness tests
+tests/                        60 unit, integration, and review-readiness tests
 evals/                        Retrieval and golden-answer evaluation sets
 data/index/                   Checked-in SEC retrieval index
 data/market/                  Three index CSV files and provenance metadata

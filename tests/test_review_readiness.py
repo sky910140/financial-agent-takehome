@@ -179,6 +179,21 @@ class ReviewReadinessTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, rf"Market {field} must be finite"):
                         market_snapshot(path)
 
+    def test_market_snapshot_accepts_lf_normalized_checksum_for_crlf_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "market.csv"
+            canonical = b"date,close,volume\n2024-01-02,3300,100\n2024-01-03,3400,120\n"
+            path.write_bytes(canonical.replace(b"\n", b"\r\n"))
+            Path(f"{path}.meta.json").write_text(json.dumps({
+                "source_url": "https://example.com/market",
+                "sha256": hashlib.sha256(canonical).hexdigest(),
+            }), encoding="utf-8")
+
+            snapshot = market_snapshot(path)
+
+        self.assertEqual(snapshot.start_close, 3300.0)
+        self.assertEqual(snapshot.end_close, 3400.0)
+
     def test_filing_response_marks_source_numbers_as_disclosed_not_calculated(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

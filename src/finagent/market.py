@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -9,6 +8,8 @@ from math import isfinite
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+from finagent.checksums import normalized_text_sha256
 
 
 TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
@@ -84,7 +85,7 @@ def download_index_history(
             "volume_basis": "source-native units; not normalized across indices",
             "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations",
         },
-        "sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
+        "sha256": normalized_text_sha256(output_path),
     }
     Path(f"{output_path}.meta.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     return len(rows)
@@ -107,7 +108,7 @@ def market_snapshot(path: Path, *, start: str | None = None, end: str | None = N
     meta_path = Path(f"{path}.meta.json")
     metadata = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
     expected_checksum = metadata.get("sha256")
-    if expected_checksum and hashlib.sha256(path.read_bytes()).hexdigest() != expected_checksum:
+    if expected_checksum and normalized_text_sha256(path) != expected_checksum:
         raise ValueError(f"Market CSV checksum does not match metadata: {path}")
     with path.open(encoding="utf-8") as handle:
         reader = csv.DictReader(handle)

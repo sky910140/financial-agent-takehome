@@ -34,6 +34,7 @@
 | `src/finagent/retrieval.py` | 停用词/金融短语/中文 bigram tokenizer、BM25、chunk、索引 JSON 读写 | 是 |
 | `src/finagent/evaluation.py` | Hit@K 检索评测与黄金答案逐句引用核验 | 是 |
 | `src/finagent/integrity.py` | SEC/市场数据 schema、元数据、行数、日期与 SHA-256 快照校验 | 是 |
+| `src/finagent/checksums.py` | 对 CRLF/LF checkout 使用稳定的文本 SHA-256 口径 | 是 |
 | `src/finagent/ingest.py` | SEC HTML 文本化、排版归一化、inline-XBRL 噪声过滤和索引构建 | 是 |
 | `src/finagent/sec.py` | 十家公司配置、SEC User-Agent 验证、下载、manifest 保护性追加 | 是 |
 | `src/finagent/market.py` | 腾讯财经年度 K 线下载、三大指数批量入口、市场快照和 CSV 校验 | 是 |
@@ -41,7 +42,7 @@
 | `src/finagent/memory.py` | 用户 ID 隔离的 JSON 长期偏好写入、读取、修改、清除与原子落盘 | 是 |
 | `src/finagent/sources.py` | `EvidenceChunk`、`Citation`、`SearchResult` 的稳定数据结构 | 是 |
 | `tests/test_finagent.py` | 单元与集成测试：来源、检索、记忆、模型守卫、市场、SEC、CLI、Web | 是 |
-| `tests/test_review_readiness.py` | 提交前回归：引用审计、数据快照、非有限数值、记忆闭环和离线 demo | 是 |
+| `tests/test_review_readiness.py` | 提交前回归：引用审计、数据快照、非有限数值、跨平台 checksum、记忆闭环和离线 demo | 是 |
 | `data/market/` | 已提交的三组市场 CSV、`.meta.json` 和数据说明；支持离线市场 demo | 是 |
 | `data/DATA_SNAPSHOT.json` | 10-K 与市场数据的受检记录数、日期、来源、口径和 hash | 是 |
 | `evals/golden_answers.json` | 3 组黄金问答、6 个句子的 citation-to-chunk 支持映射 | 是 |
@@ -130,7 +131,7 @@ python -m unittest discover -s tests -v
 python -m compileall -q src scripts tests
 ```
 
-当前测试覆盖来源字段、BM25 与 Hit@5、黄金答案紧邻引用和答案全覆盖、数据快照、市场 checksum 与 NaN/Inf、记忆闭环、模型分阶段参数、空响应、验证器不可绕过、数字漂移、SEC recent/history 与不完整退出、Web、CLI 和安全 HTML。实际数量和覆盖率以 README 与本次 coverage 报告为准；真实模型 smoke 记录在 `DEMO_OUTPUTS.md`。
+当前 60 项测试覆盖来源字段、BM25 与 Hit@5、黄金答案紧邻引用和答案全覆盖、数据快照、市场 checksum、CRLF/LF 跨平台校验与 NaN/Inf、记忆闭环、模型分阶段参数、空响应、验证器不可绕过、数字漂移、SEC recent/history 与不完整退出、Web、CLI 和安全 HTML。实际覆盖率以 README 与本次 coverage 报告为准；真实模型 smoke 记录在 `DEMO_OUTPUTS.md`。
 
 ## 9. 已知限制与现场使用建议
 

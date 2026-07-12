@@ -88,7 +88,7 @@
           "volume_basis": "source-native units; not normalized across indices",
           "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations"
         },
-        "csv_sha256": "f3fff792df2d310cda32aab105f93999364f1dbc2c33a1f72072c6451974ae6c"
+        "csv_sha256": "a76cf2a17a94409b53c7112b820e14af90db1bba743daa7d2e9533be98b9ed60"
       },
       {
         "dataset": "sse_composite", "symbol": "sh000001", "source_name": "Tencent Finance K-line API",
@@ -101,7 +101,7 @@
           "volume_basis": "source-native units; not normalized across indices",
           "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations"
         },
-        "csv_sha256": "734394d853700a5dbcacaf8210c22b0f6f38fdfa5b29fa2fa0b324c5b3fa33fd"
+        "csv_sha256": "fc4bd4c4ee3b1659aec07e0622d8dc8ab7df95f8354b7b4f9230a3a05bfffd20"
       },
       {
         "dataset": "szse_component", "symbol": "sz399001", "source_name": "Tencent Finance K-line API",
@@ -114,7 +114,7 @@
           "volume_basis": "source-native units; not normalized across indices",
           "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations"
         },
-        "csv_sha256": "83a2fbcec3ec8a52d7ebffcab26071b62e34b799d7e2f94f6a21747af2c41c90"
+        "csv_sha256": "215d50b9ce8a13f526c3617689e72f8c60d988cf6d23dd10ae27bbe1a2a9aa88"
       }
     ]
   }

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 import re
 from collections import defaultdict
@@ -10,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from finagent.market import REQUIRED_MARKET_COLUMNS, _validate_market_rows
+from finagent.checksums import normalized_text_sha256
 from finagent.retrieval import read_chunks
 
 
@@ -129,7 +129,7 @@ def validate_repository_data(index_path: Path, market_dir: Path, snapshot_path: 
 
 
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return normalized_text_sha256(path)
 
 
 def _valid_date(value: str) -> bool:
