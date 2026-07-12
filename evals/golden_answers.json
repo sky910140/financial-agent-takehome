@@ -1,0 +1,75 @@
+[
+  {
+    "id": "apple-liquidity-debt",
+    "company": "Apple",
+    "question": "Summarize liquidity and debt-related risks.",
+    "answer": "Apple disclosed $132.4 billion of cash, cash equivalents, and marketable securities as of September 27, 2025. [S1]\nApple also disclosed $91.3 billion of fixed-rate notes, including $12.4 billion payable within 12 months. [S1]",
+    "citations": {
+      "S1": "aapl-2025-09-27-10k-000032019325000079:0105"
+    },
+    "sentence_support": [
+      {
+        "sentence": "Apple disclosed $132.4 billion of cash, cash equivalents, and marketable securities as of September 27, 2025.",
+        "citation_labels": ["S1"],
+        "required_evidence_phrases": [
+          "cash, cash equivalents and marketable securities, which totaled $132.4 billion as of September 27, 2025"
+        ]
+      },
+      {
+        "sentence": "Apple also disclosed $91.3 billion of fixed-rate notes, including $12.4 billion payable within 12 months.",
+        "citation_labels": ["S1"],
+        "required_evidence_phrases": [
+          "aggregate principal amount of $91.3 billion",
+          "with $12.4 billion payable within 12 months"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "microsoft-year-over-year-results",
+    "company": "Microsoft",
+    "question": "How did revenue or profitability change compared with the prior year?",
+    "answer": "For fiscal 2025 versus fiscal 2024, Microsoft disclosed that revenue increased $36.6 billion, or 15%. [S1]\nMicrosoft disclosed that operating income increased $19.1 billion, or 17%. [S1]",
+    "citations": {
+      "S1": "msft-2025-06-30-10k-000095017025100235:0139"
+    },
+    "sentence_support": [
+      {
+        "sentence": "For fiscal 2025 versus fiscal 2024, Microsoft disclosed that revenue increased $36.6 billion, or 15%.",
+        "citation_labels": ["S1"],
+        "required_evidence_phrases": ["Revenue increased $36.6 billion or 15%"]
+      },
+      {
+        "sentence": "Microsoft disclosed that operating income increased $19.1 billion, or 17%.",
+        "citation_labels": ["S1"],
+        "required_evidence_phrases": ["Operating income increased $19.1 billion or 17%"]
+      }
+    ]
+  },
+  {
+    "id": "amazon-competition",
+    "company": "Amazon",
+    "question": "What does the company say about competition?",
+    "answer": "Amazon disclosed that competition continues to intensify as new business models and well-funded competitors enter. [S1]\nAmazon warned that competition may require higher spending or lower prices, which could materially reduce sales and profits. [S1]",
+    "citations": {
+      "S1": "amzn-2025-12-31-10k-000101872426000004:0021"
+    },
+    "sentence_support": [
+      {
+        "sentence": "Amazon disclosed that competition continues to intensify as new business models and well-funded competitors enter.",
+        "citation_labels": ["S1"],
+        "required_evidence_phrases": [
+          "Competition continues to intensify, including with the development of new business models and the entry of new and well-funded competitors"
+        ]
+      },
+      {
+        "sentence": "Amazon warned that competition may require higher spending or lower prices, which could materially reduce sales and profits.",
+        "citation_labels": ["S1"],
+        "required_evidence_phrases": [
+          "we may be required to increase our spending or lower prices",
+          "could materially reduce our sales and profits"
+        ]
+      }
+    ]
+  }
+]

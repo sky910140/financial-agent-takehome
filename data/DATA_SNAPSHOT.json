@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "snapshot_date": "2026-07-12",
+  "scope": {
+    "sec": "Latest checked-in Form 10-K for each of ten supported issuers; filing text is flattened and chunked for lexical retrieval.",
+    "market": "Daily close and volume returned by Tencent Finance annual K-line requests through 2026-07-10.",
+    "market_methodology": "CSV source observations are disclosed values. Period return and average volume are calculated deterministically at runtime; model prose is interpretation only."
+  },
+  "filings": {
+    "index_file": "filing_chunks.json",
+    "index_sha256": "f115270968491812a3d381c48b57340b8aafcbc87b942ec5b72eb248e5397040",
+    "document_count": 10,
+    "chunk_count": 3978,
+    "records": [
+      {
+        "ticker": "AAPL", "company": "Apple Inc.", "cik": "320193", "form": "10-K",
+        "report_date": "2025-09-27", "filing_date": "2025-10-31", "accession": "0000320193-25-000079",
+        "document_id": "aapl-2025-09-27-10k-000032019325000079",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm", "chunk_count": 192
+      },
+      {
+        "ticker": "AMZN", "company": "Amazon.com, Inc.", "cik": "1018724", "form": "10-K",
+        "report_date": "2025-12-31", "filing_date": "2026-02-06", "accession": "0001018724-26-000004",
+        "document_id": "amzn-2025-12-31-10k-000101872426000004",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/1018724/000101872426000004/amzn-20251231.htm", "chunk_count": 261
+      },
+      {
+        "ticker": "BRK-B", "company": "Berkshire Hathaway Inc.", "cik": "1067983", "form": "10-K",
+        "report_date": "2025-12-31", "filing_date": "2026-03-02", "accession": "0001193125-26-083899",
+        "document_id": "brk-b-2025-12-31-10k-000119312526083899",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/1067983/000119312526083899/brka-20251231.htm", "chunk_count": 445
+      },
+      {
+        "ticker": "GOOGL", "company": "Alphabet Inc.", "cik": "1652044", "form": "10-K",
+        "report_date": "2025-12-31", "filing_date": "2026-02-05", "accession": "0001652044-26-000018",
+        "document_id": "googl-2025-12-31-10k-000165204426000018",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/goog-20251231.htm", "chunk_count": 317
+      },
+      {
+        "ticker": "JPM", "company": "JPMorgan Chase & Co.", "cik": "19617", "form": "10-K",
+        "report_date": "2025-12-31", "filing_date": "2026-02-13", "accession": "0001628280-26-008131",
+        "document_id": "jpm-2025-12-31-10k-000162828026008131",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm", "chunk_count": 1083
+      },
+      {
+        "ticker": "MSFT", "company": "Microsoft Corporation", "cik": "789019", "form": "10-K",
+        "report_date": "2025-06-30", "filing_date": "2025-07-30", "accession": "0000950170-25-100235",
+        "document_id": "msft-2025-06-30-10k-000095017025100235",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm", "chunk_count": 286
+      },
+      {
+        "ticker": "NVDA", "company": "NVIDIA Corporation", "cik": "1045810", "form": "10-K",
+        "report_date": "2026-01-25", "filing_date": "2026-02-25", "accession": "0001045810-26-000021",
+        "document_id": "nvda-2026-01-25-10k-000104581026000021",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm", "chunk_count": 313
+      },
+      {
+        "ticker": "TSLA", "company": "Tesla, Inc.", "cik": "1318605", "form": "10-K",
+        "report_date": "2025-12-31", "filing_date": "2026-01-29", "accession": "0001628280-26-003952",
+        "document_id": "tsla-2025-12-31-10k-000162828026003952",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828026003952/tsla-20251231.htm", "chunk_count": 363
+      },
+      {
+        "ticker": "WMT", "company": "Walmart Inc.", "cik": "104169", "form": "10-K",
+        "report_date": "2026-01-31", "filing_date": "2026-03-13", "accession": "0000104169-26-000055",
+        "document_id": "wmt-2026-01-31-10k-000010416926000055",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/104169/000010416926000055/wmt-20260131.htm", "chunk_count": 330
+      },
+      {
+        "ticker": "XOM", "company": "Exxon Mobil Corporation", "cik": "34088", "form": "10-K",
+        "report_date": "2025-12-31", "filing_date": "2026-02-18", "accession": "0000034088-26-000045",
+        "document_id": "xom-2025-12-31-10k-000003408826000045",
+        "source_url": "https://www.sec.gov/Archives/edgar/data/34088/000003408826000045/xom-20251231.htm", "chunk_count": 388
+      }
+    ]
+  },
+  "markets": {
+    "dataset_count": 3,
+    "records": [
+      {
+        "dataset": "csi300", "symbol": "sh000300", "source_name": "Tencent Finance K-line API",
+        "source_url": "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get", "downloaded_at": "2026-07-10T14:25:39.103542+00:00",
+        "coverage_start": "2005-04-08", "coverage_end": "2026-07-10", "row_count": 5164,
+        "fields": {"close": "daily close", "volume": "daily volume as returned by source"},
+        "methodology": {
+          "frequency": "daily trading observations returned by source; non-trading days are not filled",
+          "request_adjustment": "qfq", "trading_date_timezone": "Asia/Shanghai",
+          "volume_basis": "source-native units; not normalized across indices",
+          "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations"
+        },
+        "csv_sha256": "f3fff792df2d310cda32aab105f93999364f1dbc2c33a1f72072c6451974ae6c"
+      },
+      {
+        "dataset": "sse_composite", "symbol": "sh000001", "source_name": "Tencent Finance K-line API",
+        "source_url": "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get", "downloaded_at": "2026-07-10T14:28:01.914001+00:00",
+        "coverage_start": "2005-01-04", "coverage_end": "2026-07-10", "row_count": 5225,
+        "fields": {"close": "daily close", "volume": "daily volume as returned by source"},
+        "methodology": {
+          "frequency": "daily trading observations returned by source; non-trading days are not filled",
+          "request_adjustment": "qfq", "trading_date_timezone": "Asia/Shanghai",
+          "volume_basis": "source-native units; not normalized across indices",
+          "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations"
+        },
+        "csv_sha256": "734394d853700a5dbcacaf8210c22b0f6f38fdfa5b29fa2fa0b324c5b3fa33fd"
+      },
+      {
+        "dataset": "szse_component", "symbol": "sz399001", "source_name": "Tencent Finance K-line API",
+        "source_url": "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get", "downloaded_at": "2026-07-10T14:58:52.940618+00:00",
+        "coverage_start": "2005-01-04", "coverage_end": "2026-07-10", "row_count": 5225,
+        "fields": {"close": "daily close", "volume": "daily volume as returned by source"},
+        "methodology": {
+          "frequency": "daily trading observations returned by source; non-trading days are not filled",
+          "request_adjustment": "qfq", "trading_date_timezone": "Asia/Shanghai",
+          "volume_basis": "source-native units; not normalized across indices",
+          "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations"
+        },
+        "csv_sha256": "83a2fbcec3ec8a52d7ebffcab26071b62e34b799d7e2f94f6a21747af2c41c90"
+      }
+    ]
+  }
+}

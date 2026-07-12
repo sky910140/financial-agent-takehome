@@ -15,8 +15,11 @@ This project does not provide investment advice, execute trades, or treat model 
 | SEC corpus | Latest 10-K for 10 companies, 3,978 searchable chunks |
 | China market data | CSI 300, Shanghai Composite, Shenzhen Component, 20+ years of daily close and volume |
 | Retrieval evaluation | 5 golden questions, Hit@5 = 5/5 |
-| Automated tests | 44/44 passing, 88% coverage |
+| Golden answer audit | 3 Q&A cases, 6/6 sentences verified against cited evidence phrases |
+| Automated tests | 59/59 passing, 88% total coverage |
+| Python compatibility | 3.11, 3.13, and 3.14 verified locally |
 | Multi-model path | DeepSeek planning → Doubao drafting → DeepSeek verification |
+| Strict remote path | Doubao + DeepSeek three-stage smoke reached `remote_verified` |
 | Output formats | Markdown, JSON, self-contained safe HTML |
 | Failure behavior | Explicit fallback for model, network, citation, or numeric-guard failures |
 
@@ -47,9 +50,11 @@ flowchart TB
 
 The key design choice is not simply calling two models. It is separating responsibilities and keeping the final trust decision in deterministic code. See [DESIGN.md](DESIGN.md) for the full tradeoff discussion.
 
-## Run in Five Minutes
+## Five-Minute Reviewer Path
 
 Python 3.11+ is required. The runtime has no mandatory third-party dependency. The checked-in market files and SEC retrieval index make the core demo runnable without downloading external data.
+
+Windows PowerShell:
 
 ```powershell
 git clone https://github.com/sky910140/financial-agent-takehome.git
@@ -59,23 +64,50 @@ python -m venv .venv
 python -m pip install -e .
 ```
 
-Start with two fully offline, deterministic checks:
+macOS / Linux:
 
-```powershell
-# 20-year CSI 300 period snapshot
-python -m finagent market --file data/market/csi300.csv --start 2006-07-10 --end 2026-07-10
-
-# Retrieval regression evaluation
-python -m finagent eval-retrieval
+```bash
+git clone https://github.com/sky910140/financial-agent-takehome.git
+cd financial-agent-takehome
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
 ```
 
-The SEC question path also runs without model credentials:
+Run the complete onsite path with one command. It explicitly disables remote model credentials, makes no network request, and uses temporary memory outside the repository:
 
 ```powershell
+python -m finagent offline-demo
+```
+
+Expected output:
+
+```text
+Data integrity: PASS (10 filings, 3978 chunks, 3 market datasets)
+Market deterministic calculation: 1412.12 -> 4780.79 = 238.55%
+Retrieval Hit@5: 5/5
+Golden sentence citations: 6/6
+Offline cited Q&A: PASS (4 cited chunks)
+Memory lifecycle: PASS (write/read/influence/modify/clear)
+OFFLINE DEMO: PASS
+```
+
+Use the remaining minutes for targeted inspection:
+
+```powershell
+python -m finagent eval-golden
+python -m finagent data-integrity
 python -m finagent ask "Summarize liquidity and debt-related risks." --company Apple --trace
+python -m finagent ask "I care about cash flow and debt maturity." --company JPM --user onsite
+python -m finagent memory show --user onsite
+python -m finagent memory set --user onsite --preferences "liquidity risk"
+python -m finagent ask "What should I focus on?" --company JPM --user onsite --json
+python -m finagent memory clear --user onsite
 ```
 
-Without credentials, the output explicitly states `Offline extractive mode` while preserving the SEC URL, filing date, accession, and chunk ID.
+Without credentials, output explicitly reports `execution_mode=offline_extractive` and the fallback reason while preserving SEC URL, filing date, document ID, accession, chunk ID, evidence SHA-256, and retrieval score.
+
+Onsite checklist: confirm Python 3.11+; run `offline-demo` before relying on network access; require exit code 0 and the final `PASS`; open one `[S#]` SEC URL and inspect accession/chunk/hash; verify numeric output labels disclosed versus deterministically calculated values; clear the demo memory; configure `.env` and run `smoke-demo` only when the remote path is explicitly requested. See the [failure matrix](docs/FAILURE_MATRIX.md) for exact degradation and exit behavior.
 
 ## Configure the Two Required Models
 
@@ -160,6 +192,8 @@ The HTML renderer escapes dynamic text, links only absolute HTTP(S) sources, and
 | Public Web | request-local `web_search` evidence | title, result URL, snippet; never silently promoted to parsed SEC evidence |
 | User preferences | local `data/memory/preferences.json` | explicit allow-listed preferences only; never committed |
 
+`data/DATA_SNAPSHOT.json` is the checked 2026-07-12 snapshot. It lists ticker, issuer, CIK, report date, filing date, accession, SEC URL, and chunk count for every 10-K, plus source, download time, coverage dates, row count, and SHA-256 for all three market datasets. CSV close and volume are source-disclosed observations; period return and average volume are deterministic Python calculations; model prose is interpretation only. `python -m finagent data-integrity` recomputes and checks the snapshot.
+
 Raw SEC HTML is excluded to keep the repository small. The download and rebuild path remains reproducible:
 
 ```powershell
@@ -178,24 +212,29 @@ python -m coverage run -m unittest discover -s tests
 python -m coverage report --fail-under=80
 python -m compileall -q src scripts tests
 python -m finagent eval-retrieval
+python -m finagent eval-golden
+python -m finagent data-integrity
+python -m finagent offline-demo
 ```
 
-Coverage includes SEC recent/history downloads, incomplete-download exit behavior, XBRL noise filtering, BM25 and financial phrase handling, market date and checksum validation, preference memory, per-stage model budgets, empty model responses, mandatory verification, numeric drift, citation convergence, Web evidence classification, CLI errors, and safe HTML rendering.
+Coverage includes SEC recent/history downloads, incomplete-download exit behavior, XBRL noise filtering, BM25 and financial phrase handling, market dates, checksums, NaN/Inf rejection, preference memory, per-stage model budgets, empty model responses, mandatory verification, numeric drift, adjacent sentence-citation binding, full golden-answer coverage, Web evidence classification, CLI errors, and safe HTML rendering.
 
-GitHub Actions runs compilation, tests, and retrieval evaluation on Python 3.11 and 3.13 without model credentials or external network access.
+GitHub Actions runs compilation, coverage, retrieval evaluation, golden-answer verification, data integrity, and the offline demo on Python 3.11 and 3.13 without model credentials or external network access.
 
 ## Repository Layout
 
 ```text
 src/finagent/                 Agent, retrieval, models, data, memory, and output
+src/finagent/integrity.py     SEC/market snapshot and integrity gates
 scripts/                      SEC and market download entry points
-tests/test_finagent.py        Unit and integration tests
-evals/retrieval_cases.json    Golden retrieval questions
+tests/                        59 unit, integration, and review-readiness tests
+evals/                        Retrieval and golden-answer evaluation sets
 data/index/                   Checked-in SEC retrieval index
 data/market/                  Three index CSV files and provenance metadata
+data/DATA_SNAPSHOT.json       Audited records, methodology, and SHA-256 values
+docs/                         Golden audit, failure matrix, and implementation map
 DESIGN.md                     1-2 page architecture and tradeoff document
 DEMO_OUTPUTS.md               Reproducible commands and recorded outputs
-docs/PROJECT_STRUCTURE_CN.md  File-level implementation reference in Chinese
 ```
 
 ## Known Boundaries
@@ -204,7 +243,7 @@ docs/PROJECT_STRUCTURE_CN.md  File-level implementation reference in Chinese
 - Flattened HTML cannot preserve every complex financial-table relationship. Numeric claims should be checked against the original filing; an XBRL fact layer is the next priority.
 - Public Web results are variable and snippets are not first-party financial evidence.
 - The numeric guard rejects values absent from the supplied evidence but does not prove semantic entailment for every non-numeric claim.
-- Local preference memory has no authentication, encryption, concurrency control, or deletion API and is not production storage.
+- Local preference memory supports user-scoped read, allow-listed modification, and clear operations with atomic file replacement. It still lacks authentication, encryption, cross-process locking, and retention policy, so it is not production storage.
 - The current interface is CLI plus static HTML rather than a multi-turn chat UI, prioritizing reproducibility, citations, and explicit failure behavior.
 
 Further reading:
@@ -213,3 +252,6 @@ Further reading:
 - [Reproducible demo outputs](DEMO_OUTPUTS.md)
 - [Project structure and implementation map](docs/PROJECT_STRUCTURE_CN.md)
 - [Market data notes](data/market/README_EN.md)
+- [Golden Q&A and sentence citation audit](docs/GOLDEN_QA.md)
+- [Failure matrix and fallback behavior](docs/FAILURE_MATRIX.md)
+- [Data snapshot](data/DATA_SNAPSHOT.json)

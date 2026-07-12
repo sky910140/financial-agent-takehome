@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from html import escape
 from pathlib import Path
@@ -44,6 +45,9 @@ class AgentResponse:
     model_trace: list[dict[str, str | bool | None]]
     evidence_count: int
     warnings: list[str]
+    execution_mode: str = "offline_extractive"
+    fallback_reason: str | None = None
+    value_provenance: list[dict[str, object]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -53,6 +57,9 @@ class AgentResponse:
             "model_trace": self.model_trace,
             "evidence_count": self.evidence_count,
             "warnings": self.warnings,
+            "execution_mode": self.execution_mode,
+            "fallback_reason": self.fallback_reason,
+            "value_provenance": self.value_provenance,
         }
 
 
@@ -102,9 +109,13 @@ class FinancialAgent:
             chunks = [chunk for chunk in chunks if company_lower in chunk.title.lower() or company_lower in chunk.document_id.lower()]
         evidence = [item.evidence for item in LocalRetriever(chunks).search(query, limit=limit)]
         market_evidence: list[EvidenceChunk] = []
+        value_provenance: list[dict[str, object]] = []
         warnings: list[str] = []
         if include_web:
-            evidence.extend(self._web_evidence(question))
+            web_evidence = self._web_evidence(question)
+            evidence.extend(web_evidence)
+            if not web_evidence:
+                warnings.append("Web search returned no usable results")
         if is_market_query and self.market_path.exists():
             try:
                 snapshot = market_snapshot(self.market_path)
@@ -113,15 +124,37 @@ class FinancialAgent:
                     document_id=f"market-{snapshot.symbol}",
                     title=f"{snapshot.symbol} daily close and volume ({snapshot.start_date} to {snapshot.end_date})",
                     text=(
-                        f"{snapshot.symbol} moved from {snapshot.start_close:.2f} on {snapshot.start_date} "
-                        f"to {snapshot.end_close:.2f} on {snapshot.end_date}, a {snapshot.change_percent:.2f}% change. "
-                        f"Average daily volume in this period was {snapshot.average_volume:.0f}."
+                        f"[DISCLOSED] {snapshot.symbol} moved from {snapshot.start_close:.2f} on {snapshot.start_date} "
+                        f"to {snapshot.end_close:.2f} on {snapshot.end_date}. "
+                        f"[CALCULATED] Deterministic period change was {snapshot.change_percent:.2f}% using "
+                        f"(end_close / start_close - 1) * 100; deterministic average daily volume was "
+                        f"{snapshot.average_volume:.0f} using arithmetic mean."
                     ),
                     source_url=snapshot.source_url,
                     published_at=snapshot.end_date,
                     source_type="market_data",
                     locator=f"{self.market_path.name}; rows {snapshot.start_date}..{snapshot.end_date}",
                 ))
+                value_provenance.extend([
+                    {
+                        "kind": "disclosed",
+                        "values": {
+                            "start_close": snapshot.start_close,
+                            "end_close": snapshot.end_close,
+                            "start_date": snapshot.start_date,
+                            "end_date": snapshot.end_date,
+                        },
+                        "method": "Values read from checked-in source CSV rows after checksum and schema validation.",
+                    },
+                    {
+                        "kind": "calculated",
+                        "values": {
+                            "change_percent": snapshot.change_percent,
+                            "average_volume": snapshot.average_volume,
+                        },
+                        "method": "Python deterministic formulas: (end_close / start_close - 1) * 100 and arithmetic mean.",
+                    },
+                ])
             except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
                 warning = f"Market data unavailable: {exc}"
                 LOGGER.warning(warning)
@@ -134,17 +167,27 @@ class FinancialAgent:
         # A pure market question should not be diluted by incidental filing mentions of "index".
         if market_evidence and not company:
             evidence = market_evidence + [chunk for chunk in evidence if chunk.source_type == "web_search"]
+        elif is_market_query and not company:
+            evidence = [chunk for chunk in evidence if chunk.source_type == "web_search"]
         else:
             evidence = market_evidence + evidence
 
         sources = self._cite(evidence)
+        if any(source.evidence.source_type == "sec_10k" for source in sources):
+            value_provenance.append({
+                "kind": "disclosed",
+                "values": {},
+                "method": "Numeric values quoted from SEC filing evidence are disclosed values; no model arithmetic is accepted.",
+            })
         if sources:
             draft = self.models.complete(
                 "doubao",
                 (
                     "You are the filing analyst in an evidence-first financial agent. Answer only from the supplied evidence. "
                     "Every factual claim needs one of the supplied [S#] citations. If evidence is insufficient, say so plainly. "
-                    "Do not provide investment advice or invent figures. Return at most four concise bullets and stay under 250 words."
+                    "Do not provide investment advice, invent figures, or perform arithmetic. Treat source figures as disclosed values; "
+                    "only describe a value as calculated when the evidence explicitly marks it [CALCULATED]. Keep model interpretation separate. "
+                    "Return at most four concise bullets and stay under 250 words."
                 ),
                 self._analysis_prompt(question, preferences, sources),
                 max_tokens=ANALYSIS_MAX_TOKENS,
@@ -155,6 +198,7 @@ class FinancialAgent:
                 (
                     "You are the final citation verifier. Rewrite the draft only where needed to remove unsupported claims. "
                     "Use only the exact [S#] labels in the evidence. Retain an uncertainty statement when evidence is weak. "
+                    "Reject arithmetic not explicitly supplied as [CALCULATED] evidence and distinguish disclosed facts from interpretation. "
                     "Return only the final answer, at most four concise bullets and under 250 words."
                 ),
                 self._verification_prompt(question, sources, draft.text),
@@ -165,16 +209,25 @@ class FinancialAgent:
             draft = ModelResponse("offline", "doubao-seed-evolving", "", False, "No evidence available")
             verification = ModelResponse("offline", "deepseek-v4-pro", "", False, "No evidence available")
 
-        fallback_reason = self._fallback_reason(plan, draft, verification)
+        fallback_reason = self._fallback_reason(plan, draft, verification, sources)
         fallback = self._offline_answer(question, preferences, sources, fallback_reason)
         final = fallback
+        execution_mode = "offline_extractive"
         if (
-            draft.used_remote_model
+            plan.used_remote_model
+            and draft.used_remote_model
             and verification.used_remote_model
             and self._has_valid_citations(verification.text, sources)
             and self._has_supported_numbers(verification.text, sources)
         ):
             final = self._sanitize_citations(verification.text, sources)
+            execution_mode = "remote_verified"
+            if value_provenance:
+                value_provenance.append({
+                    "kind": "model_interpretation",
+                    "values": {},
+                    "method": "Remote prose interpretation accepted only after independent citation and numeric guards.",
+                })
 
         cited_sources = self._referenced_sources(final, sources)
 
@@ -185,6 +238,9 @@ class FinancialAgent:
             model_trace=[self._trace("planning", plan), self._trace("analysis", draft), self._trace("verification", verification)],
             evidence_count=len(cited_sources),
             warnings=warnings,
+            execution_mode=execution_mode,
+            fallback_reason=None if execution_mode == "remote_verified" else fallback_reason,
+            value_provenance=value_provenance,
         )
 
     @staticmethod
@@ -219,6 +275,10 @@ class FinancialAgent:
                 source_type=chunk.source_type,
                 document_id=chunk.document_id,
                 locator=f"{chunk.locator}; chunk {chunk.chunk_id}" if chunk.locator else f"chunk {chunk.chunk_id}",
+                chunk_id=chunk.chunk_id,
+                evidence_sha256=hashlib.sha256(chunk.text.encode("utf-8")).hexdigest(),
+                excerpt=chunk.text[:280] + ("..." if len(chunk.text) > 280 else ""),
+                retrieval_score=chunk.score,
             ),
         ) for index, chunk in enumerate(evidence, start=1)]
 
@@ -290,13 +350,24 @@ class FinancialAgent:
         return [source for source in sources if source.citation.label in labels]
 
     @staticmethod
-    def _fallback_reason(plan: ModelResponse, draft: ModelResponse, verification: ModelResponse) -> str:
+    def _fallback_reason(
+        plan: ModelResponse,
+        draft: ModelResponse,
+        verification: ModelResponse,
+        sources: list[SearchResult],
+    ) -> str:
         failures = [
             f"{stage}: {response.error or 'remote model unavailable'}"
             for stage, response in (("planning", plan), ("analysis", draft), ("verification", verification))
             if not response.used_remote_model
         ]
-        return "; ".join(failures) or "remote output did not pass the citation guard"
+        if failures:
+            return "; ".join(failures)
+        if not FinancialAgent._has_valid_citations(verification.text, sources):
+            return "verification: citation guard rejected missing or unknown source labels"
+        if not FinancialAgent._has_supported_numbers(verification.text, sources):
+            return "verification: numeric guard rejected a value absent from supplied evidence"
+        return "verification: remote output failed an acceptance guard"
 
     @staticmethod
     def _offline_answer(
@@ -347,9 +418,20 @@ def render_markdown(response: AgentResponse, *, include_trace: bool = False) -> 
     sources = "\n".join(
         f"- {citation.label} [{citation.title}]({citation.source_url})"
         f" | {citation.source_type} | {citation.published_at or 'date unavailable'} | {citation.locator or 'locator unavailable'}"
+        f" | document_id={citation.document_id}"
+        f" | evidence_sha256={citation.evidence_sha256 or 'unavailable'}"
+        f" | retrieval_score={citation.retrieval_score if citation.retrieval_score is not None else 'unavailable'}"
         for citation in response.citations
     ) or "- No sources retrieved."
-    output = f"{response.answer}\n\n## Sources\n\n{sources}"
+    output = f"{response.answer}\n\n## Execution mode\n\n{response.execution_mode}"
+    if response.fallback_reason:
+        output += f"\n\nFallback reason: {response.fallback_reason}"
+    if response.value_provenance:
+        output += "\n\n## Value provenance\n\n" + "\n".join(
+            f"- {item['kind']}: {item['method']}"
+            for item in response.value_provenance
+        )
+    output += f"\n\n## Sources\n\n{sources}"
     if response.warnings:
         output += "\n\n## Data warnings\n\n" + "\n".join(f"- {warning}" for warning in response.warnings)
     if include_trace:
@@ -425,9 +507,21 @@ def render_html(response: AgentResponse, *, include_trace: bool = False) -> str:
             citation.source_type,
             citation.published_at or "date unavailable",
             citation.locator or "locator unavailable",
+            f"document_id={citation.document_id}",
+            f"evidence_sha256={citation.evidence_sha256 or 'unavailable'}",
+            f"retrieval_score={citation.retrieval_score if citation.retrieval_score is not None else 'unavailable'}",
         ))
         source_items.append(f"<li>{title}<span class=\"source-meta\">{details}</span></li>")
     sources = "\n".join(source_items) or "<li>No sources retrieved.</li>"
+
+    audit_items = [f"<li>Execution mode: {escape(response.execution_mode)}</li>"]
+    if response.fallback_reason:
+        audit_items.append(f"<li>Fallback reason: {escape(response.fallback_reason)}</li>")
+    audit_items.extend(
+        f"<li>{escape(str(item['kind']))}: {escape(str(item['method']))}</li>"
+        for item in response.value_provenance
+    )
+    audit = "<section><h2>Execution mode</h2><ul>" + "".join(audit_items) + "</ul></section>"
 
     preferences = ""
     if response.preferences:
@@ -469,6 +563,7 @@ a {{ color: #0b5cad; }} .source-meta {{ display: block; color: #52606d; font-siz
 <main>
 <header><h1>Financial Agent Research Report</h1><p>Evidence-backed research output. Not investment advice.</p></header>
 <section>{_render_html_blocks(response.answer)}</section>
+{audit}
 <section><h2>Sources</h2><ul>{sources}</ul></section>
 {preferences}
 {warnings}

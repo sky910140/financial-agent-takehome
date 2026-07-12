@@ -5,6 +5,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from math import isfinite
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -76,6 +77,13 @@ def download_index_history(
         "coverage_start": min(rows),
         "coverage_end": max(rows),
         "fields": {"close": "daily close", "volume": "daily volume as returned by source"},
+        "methodology": {
+            "frequency": "daily trading observations returned by source; non-trading days are not filled",
+            "request_adjustment": "qfq",
+            "trading_date_timezone": "Asia/Shanghai",
+            "volume_basis": "source-native units; not normalized across indices",
+            "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations",
+        },
         "sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
     }
     Path(f"{output_path}.meta.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -138,6 +146,10 @@ def _validate_market_rows(rows: list[dict[str, str]]) -> None:
             raise ValueError(f"Invalid market row at CSV line {line_number}") from exc
         if previous_date is not None and current_date <= previous_date:
             raise ValueError("Market dates must be strictly increasing with no duplicates")
+        if not isfinite(close):
+            raise ValueError(f"Market close must be finite at CSV line {line_number}")
+        if not isfinite(volume):
+            raise ValueError(f"Market volume must be finite at CSV line {line_number}")
         if close <= 0:
             raise ValueError(f"Market close must be positive at CSV line {line_number}")
         if volume < 0:

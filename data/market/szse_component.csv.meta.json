@@ -34,5 +34,12 @@
     "close": "daily close",
     "volume": "daily volume as returned by source"
   },
+  "methodology": {
+    "frequency": "daily trading observations returned by source; non-trading days are not filled",
+    "request_adjustment": "qfq",
+    "trading_date_timezone": "Asia/Shanghai",
+    "volume_basis": "source-native units; not normalized across indices",
+    "calculation_policy": "source rows are disclosed values; returns and averages are deterministic Python calculations"
+  },
   "sha256": "83a2fbcec3ec8a52d7ebffcab26071b62e34b799d7e2f94f6a21747af2c41c90"
 }

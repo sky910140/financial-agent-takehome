@@ -12,6 +12,10 @@ class Citation:
     source_type: str
     document_id: str
     locator: str | None = None
+    chunk_id: str | None = None
+    evidence_sha256: str | None = None
+    excerpt: str | None = None
+    retrieval_score: float | None = None
 
     def to_dict(self) -> dict[str, str | None]:
         return asdict(self)

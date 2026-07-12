@@ -21,9 +21,11 @@ Each `.meta.json` sidecar records:
 - UTC download time;
 - row count and coverage dates;
 - field definitions;
+- daily frequency, no non-trading-day filling, `qfq` request parameter, trading-date timezone, and source-native volume basis;
+- the boundary between disclosed values, deterministic calculations, and model interpretation;
 - the CSV SHA-256 checksum.
 
-Runtime validation rejects missing columns, malformed numbers, duplicate or unsorted dates, non-positive close prices, negative volume, and checksum mismatches. Market-period returns and average volume are calculated by Python code rather than by an LLM.
+Runtime validation rejects missing columns, malformed numbers, duplicate or unsorted dates, non-positive close prices, negative volume, and checksum mismatches. CSV close and volume are source-disclosed observations. Market-period returns and average volume are deterministic Python calculations; an LLM may only interpret those values.
 
 Run an auditable period snapshot with:
 

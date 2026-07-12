@@ -46,3 +46,9 @@ jobs:
 
       - name: Run retrieval regression evaluation
         run: python -m finagent eval-retrieval
+
+      - name: Verify golden answers and checked-in data
+        run: |
+          python -m finagent eval-golden
+          python -m finagent data-integrity
+          python -m finagent offline-demo

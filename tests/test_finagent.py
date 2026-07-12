@@ -577,6 +577,8 @@ class FinancialAgentTests(unittest.TestCase):
         self.assertNotIn("javascript:", output)
         self.assertNotIn("<script>", output)
         self.assertIn("&lt;b&gt;Market source delayed&lt;/b&gt;", output)
+        self.assertIn("Execution mode", output)
+        self.assertIn("offline_extractive", output)
 
     def test_cli_html_mode_renders_a_standalone_report(self) -> None:
         response = AgentResponse(
