@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
+SEC_SUBMISSIONS_FILE_URL = "https://data.sec.gov/submissions/{name}"
 SEC_ARCHIVE_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}"
 
 COMPANIES: tuple[tuple[str, str, int], ...] = (
@@ -66,19 +67,35 @@ def download_sec_10k(
     for ticker, company, cik in companies:
         try:
             submissions = _get_json(SEC_SUBMISSIONS_URL.format(cik=cik), contact)
-            recent = submissions.get("filings", {}).get("recent", {})
-            selected = [
-                index for index, form in enumerate(recent.get("form", []))
-                if form == "10-K"
-            ][:years]
+            filings = submissions.get("filings", {})
+            filings = filings if isinstance(filings, dict) else {}
+            recent = filings.get("recent", {})
+            selected = _select_10k_rows(recent if isinstance(recent, dict) else {}, limit=years)
+            if len(selected) < years:
+                history_files = filings.get("files", [])
+                if isinstance(history_files, list):
+                    for history_file in history_files:
+                        if len(selected) >= years or not isinstance(history_file, dict):
+                            break
+                        name = history_file.get("name")
+                        if not isinstance(name, str) or not name:
+                            continue
+                        historical = _get_json(SEC_SUBMISSIONS_FILE_URL.format(name=name), contact)
+                        selected.extend(_select_10k_rows(
+                            historical,
+                            limit=years - len(selected),
+                            excluded_accessions={row["accession_number"] for row in selected},
+                        ))
             if not selected:
                 errors.append(f"{ticker}: no 10-K in SEC recent submissions")
                 continue
-            for index in selected:
-                accession = recent["accessionNumber"][index]
-                primary_document = recent["primaryDocument"][index]
-                filing_date = recent["filingDate"][index]
-                report_date = recent.get("reportDate", [""] * len(recent["form"]))[index]
+            if len(selected) < years:
+                errors.append(f"{ticker}: requested {years} 10-K filings but SEC submissions exposed {len(selected)}")
+            for filing in selected:
+                accession = filing["accession_number"]
+                primary_document = filing["primary_document"]
+                filing_date = filing["filing_date"]
+                report_date = filing["report_date"]
                 source_url = SEC_ARCHIVE_URL.format(cik=cik, accession=accession.replace("-", ""), document=primary_document)
                 payload = _get_bytes(source_url, contact)
                 document_id = f"{ticker.lower()}-{report_date or filing_date}-10k-{accession.replace('-', '')}"
@@ -120,6 +137,40 @@ def download_sec_10k(
         "sec_user_agent_configured": True,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     return records
+
+
+def _select_10k_rows(
+    table: dict[str, object],
+    *,
+    limit: int,
+    excluded_accessions: set[str] | None = None,
+) -> list[dict[str, str]]:
+    """Normalize SEC parallel-array submission tables into auditable filing rows."""
+    excluded_accessions = excluded_accessions or set()
+    forms = table.get("form", [])
+    accessions = table.get("accessionNumber", [])
+    primary_documents = table.get("primaryDocument", [])
+    filing_dates = table.get("filingDate", [])
+    report_dates = table.get("reportDate", [])
+    if not all(isinstance(values, list) for values in (forms, accessions, primary_documents, filing_dates, report_dates)):
+        return []
+    rows: list[dict[str, str]] = []
+    for index, form in enumerate(forms):
+        if form != "10-K" or len(rows) >= limit:
+            continue
+        try:
+            accession = str(accessions[index])
+            if accession in excluded_accessions:
+                continue
+            rows.append({
+                "accession_number": accession,
+                "primary_document": str(primary_documents[index]),
+                "filing_date": str(filing_dates[index]),
+                "report_date": str(report_dates[index]) if index < len(report_dates) else "",
+            })
+        except IndexError:
+            continue
+    return rows
 
 
 def _get_json(url: str, user_agent: str) -> dict[str, object]:

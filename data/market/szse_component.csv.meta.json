@@ -33,5 +33,6 @@
   "fields": {
     "close": "daily close",
     "volume": "daily volume as returned by source"
-  }
+  },
+  "sha256": "83a2fbcec3ec8a52d7ebffcab26071b62e34b799d7e2f94f6a21747af2c41c90"
 }

@@ -31,7 +31,7 @@ python -m finagent ask "Summarize liquidity and debt-related risks." --company A
 选取的输出：
 
 ```text
-Offline extractive mode is active because one or both required model credentials are unavailable.
+Offline extractive mode is active because the full two-model remote path was unavailable (planning: API key is not configured; analysis: API key is not configured; verification: API key is not configured).
 
 - The value and liquidity of the Company's cash, cash equivalents and marketable securities may fluctuate substantially. [S1]
 - Adverse economic conditions can lead to limitations on the Company's ability to issue new debt and reduced liquidity. [S2]
@@ -160,7 +160,7 @@ DeepSeek verifier: "Verifier kept only cited evidence. [S1]"
 Final answer: verifier output, not the unsupported draft.
 ```
 
-该测试证明规划词确实影响检索，验证器也可以替换草稿。它不对不同模型的相对质量做没有依据的定量主张。
+该测试证明模糊短问题可以使用规划词，验证器也可以替换草稿。其他回归测试进一步证明：验证器不可用时不能采用 Doubao 草稿，空模型正文会失败，最终 source list 只包含实际引用来源，且证据中不存在的数值会触发离线降级。
 
 ## 远程模型连通性检查
 
@@ -170,19 +170,35 @@ Final answer: verifier output, not the unsupported draft.
 python -m finagent verify-models
 ```
 
-该命令只向 Doubao 和 DeepSeek 发送 `Return READY.`，对每家成功 provider 输出 `Verified <provider> / <model>`；任意一家不可用时以退出码 2 结束。它不会发送 filing、市场记录、偏好或用户问题。2026-07-11 在本地 `.env` 配置完成后的实际记录为：
+该命令只向 Doubao 和 DeepSeek 发送 `Return READY.`，对每家成功 provider 输出 `Verified <provider> / <model>`；任意一家不可用时以退出码 2 结束。它不会发送 filing、市场记录、偏好或用户问题。2026-07-12 在本地 `.env` 配置完成后的实际记录为：
 
 ```text
 Verified doubao / doubao-seed-evolving
 Verified deepseek / deepseek-v4-pro
 ```
 
-## 有意展示的 BM25 失败案例
+## 真实三阶段模型 smoke
 
-命令：
+关闭 Doubao thinking、为 DeepSeek verifier 保留独立推理预算后，运行：
 
 ```powershell
-python -m finagent ask "top-line pressure" --company Microsoft --trace
+python -m finagent smoke-demo
 ```
 
-观察到的输出是 `No local evidence matched this question.`。Microsoft filing 可能讨论 revenue、sales 或 decline，却不含 `top-line` 或 `pressure` 两个词；系统会拒绝推断。这正是小型词法 BM25 索引的透明失败模式，也说明后续应引入经过评测的混合检索，而不是增加未记录的语义 fallback。
+2026-07-12 的实际运行以退出码 0 完成，trace 为：
+
+```text
+planning: deepseek / deepseek-v4-pro / remote=True / ok
+analysis: doubao / doubao-seed-evolving / remote=True / ok
+verification: deepseek / deepseek-v4-pro / remote=True / ok
+```
+
+最终答案保留三条实际使用的 Apple 10-K 来源，涉及现金与证券、短期债务到期、受限资金、利率和外汇风险。所有生成数值均通过 evidence 数字集合检查。任一远程阶段、引用标签或数字守卫失败时，`smoke-demo` 以退出码 2 结束并打印完整 trace。
+
+## 确定性检索评测
+
+```powershell
+python -m finagent eval-retrieval
+```
+
+当前仓库内五个 golden questions 的实际结果为 `Retrieval Hit@5: 5/5 (100%)`，覆盖 Apple 流动性、Microsoft 同比业绩、Tesla 风险因素、Amazon 竞争和 JPM cash flow/debt maturity。该小型评测只证明这些代表性路径可回归，不代表开放域语义检索已经解决。

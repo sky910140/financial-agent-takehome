@@ -4,6 +4,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from html import escape
 from pathlib import Path
 from urllib.parse import urlparse
@@ -18,7 +19,21 @@ from finagent.websearch import search_public_web
 
 MARKET_TERMS = re.compile(r"\b(csi\s*300|沪深300|sh000300|index|指数|market performance|market data)\b", re.IGNORECASE)
 CITATION_RE = re.compile(r"\[S(\d+)\]")
+NUMBER_RE = re.compile(r"(?<![A-Za-z])\d[\d,]*(?:\.\d+)?")
+TOKEN_COUNT_RE = re.compile(r"[a-z0-9]+(?:[-'][a-z0-9]+)?|[\u4e00-\u9fff]+", re.IGNORECASE)
+RETRIEVAL_EXPANSIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"liquidity|debt|流动性|债务", re.IGNORECASE), "capital resources borrowings maturity maturities"),
+    (re.compile(r"revenue|profitability|income|margin|收入|利润|盈利", re.IGNORECASE), "operating income net income fiscal year"),
+    (re.compile(r"competition|competitive|竞争", re.IGNORECASE), "compete competitor competitors competitive"),
+    (re.compile(r"risk factors?|风险因素", re.IGNORECASE), "material adverse uncertainty"),
+)
 LOGGER = logging.getLogger(__name__)
+PLAN_MAX_TOKENS = 600
+PLAN_TIMEOUT_SECONDS = 25
+ANALYSIS_MAX_TOKENS = 500
+ANALYSIS_TIMEOUT_SECONDS = 45
+VERIFICATION_MAX_TOKENS = 3_000
+VERIFICATION_TIMEOUT_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -62,7 +77,7 @@ class FinancialAgent:
         user_id: str = "default",
         company: str | None = None,
         include_web: bool = False,
-        limit: int = 7,
+        limit: int = 5,
     ) -> AgentResponse:
         question = question.strip()
         if not question:
@@ -75,6 +90,8 @@ class FinancialAgent:
                 "Identify factual dimensions needed; do not make claims, cite sources, or use outside facts."
             ),
             f"Question: {question}\nPersisted user preferences: {', '.join(preferences) or 'none'}",
+            max_tokens=PLAN_MAX_TOKENS,
+            timeout=PLAN_TIMEOUT_SECONDS,
         )
         query = self._retrieval_query(question, preferences, plan)
         is_market_query = bool(MARKET_TERMS.search(question))
@@ -121,37 +138,52 @@ class FinancialAgent:
             evidence = market_evidence + evidence
 
         sources = self._cite(evidence)
-        draft = self.models.complete(
-            "doubao",
-            (
-                "You are the filing analyst in an evidence-first financial agent. Answer only from the supplied evidence. "
-                "Every factual claim needs one of the supplied [S#] citations. If evidence is insufficient, say so plainly. "
-                "Do not provide investment advice or invent figures."
-            ),
-            self._analysis_prompt(question, preferences, sources),
-        )
-        verification = self.models.complete(
-            "deepseek",
-            (
-                "You are the final citation verifier. Rewrite the draft only where needed to remove unsupported claims. "
-                "Use only the exact [S#] labels in the evidence. Retain an uncertainty statement when evidence is weak."
-            ),
-            self._verification_prompt(question, sources, draft.text),
-        )
+        if sources:
+            draft = self.models.complete(
+                "doubao",
+                (
+                    "You are the filing analyst in an evidence-first financial agent. Answer only from the supplied evidence. "
+                    "Every factual claim needs one of the supplied [S#] citations. If evidence is insufficient, say so plainly. "
+                    "Do not provide investment advice or invent figures. Return at most four concise bullets and stay under 250 words."
+                ),
+                self._analysis_prompt(question, preferences, sources),
+                max_tokens=ANALYSIS_MAX_TOKENS,
+                timeout=ANALYSIS_TIMEOUT_SECONDS,
+            )
+            verification = self.models.complete(
+                "deepseek",
+                (
+                    "You are the final citation verifier. Rewrite the draft only where needed to remove unsupported claims. "
+                    "Use only the exact [S#] labels in the evidence. Retain an uncertainty statement when evidence is weak. "
+                    "Return only the final answer, at most four concise bullets and under 250 words."
+                ),
+                self._verification_prompt(question, sources, draft.text),
+                max_tokens=VERIFICATION_MAX_TOKENS,
+                timeout=VERIFICATION_TIMEOUT_SECONDS,
+            )
+        else:
+            draft = ModelResponse("offline", "doubao-seed-evolving", "", False, "No evidence available")
+            verification = ModelResponse("offline", "deepseek-v4-pro", "", False, "No evidence available")
 
-        fallback = self._offline_answer(question, preferences, sources)
+        fallback_reason = self._fallback_reason(plan, draft, verification)
+        fallback = self._offline_answer(question, preferences, sources, fallback_reason)
         final = fallback
-        if draft.used_remote_model and verification.used_remote_model and self._has_valid_citations(verification.text, sources):
+        if (
+            draft.used_remote_model
+            and verification.used_remote_model
+            and self._has_valid_citations(verification.text, sources)
+            and self._has_supported_numbers(verification.text, sources)
+        ):
             final = self._sanitize_citations(verification.text, sources)
-        elif draft.used_remote_model and self._has_valid_citations(draft.text, sources):
-            final = self._sanitize_citations(draft.text, sources)
+
+        cited_sources = self._referenced_sources(final, sources)
 
         return AgentResponse(
             answer=final,
-            citations=[source.citation for source in sources],
+            citations=[source.citation for source in cited_sources],
             preferences=preferences,
             model_trace=[self._trace("planning", plan), self._trace("analysis", draft), self._trace("verification", verification)],
-            evidence_count=len(sources),
+            evidence_count=len(cited_sources),
             warnings=warnings,
         )
 
@@ -159,7 +191,9 @@ class FinancialAgent:
     def _retrieval_query(question: str, preferences: list[str], plan: ModelResponse) -> str:
         """Bound model output to retrieval-term expansion, never to factual evidence or final prose."""
         base_terms = [question, *preferences]
-        if plan.used_remote_model and plan.text:
+        base_terms.extend(expansion for pattern, expansion in RETRIEVAL_EXPANSIONS if pattern.search(question))
+        raw_question_terms = TOKEN_COUNT_RE.findall(question)
+        if plan.used_remote_model and plan.text and len(raw_question_terms) <= 6:
             base_terms.append(" ".join(tokenize(plan.text)[:24]))
         return " ".join(term for term in base_terms if term)
 
@@ -232,7 +266,45 @@ class FinancialAgent:
         return CITATION_RE.sub(lambda match: match.group(0) if match.group(0) in valid else "[citation unavailable]", answer).strip()
 
     @staticmethod
-    def _offline_answer(question: str, preferences: list[str], sources: list[SearchResult]) -> str:
+    def _has_supported_numbers(answer: str, sources: list[SearchResult]) -> bool:
+        """Reject numeric drift by requiring generated values to occur in supplied evidence."""
+        clean_answer = CITATION_RE.sub("", answer)
+        clean_answer = re.sub(r"(?m)^\s*\d+[.)]\s+", "", clean_answer)
+        answer_numbers = FinancialAgent._normalized_numbers(clean_answer)
+        evidence_text = "\n".join(f"{source.evidence.title}\n{source.evidence.text}" for source in sources)
+        return answer_numbers.issubset(FinancialAgent._normalized_numbers(evidence_text))
+
+    @staticmethod
+    def _normalized_numbers(text: str) -> set[str]:
+        values: set[str] = set()
+        for match in NUMBER_RE.findall(text):
+            try:
+                values.add(format(Decimal(match.replace(",", "")).normalize(), "f"))
+            except InvalidOperation:
+                continue
+        return values
+
+    @staticmethod
+    def _referenced_sources(answer: str, sources: list[SearchResult]) -> list[SearchResult]:
+        labels = {f"[S{number}]" for number in CITATION_RE.findall(answer)}
+        return [source for source in sources if source.citation.label in labels]
+
+    @staticmethod
+    def _fallback_reason(plan: ModelResponse, draft: ModelResponse, verification: ModelResponse) -> str:
+        failures = [
+            f"{stage}: {response.error or 'remote model unavailable'}"
+            for stage, response in (("planning", plan), ("analysis", draft), ("verification", verification))
+            if not response.used_remote_model
+        ]
+        return "; ".join(failures) or "remote output did not pass the citation guard"
+
+    @staticmethod
+    def _offline_answer(
+        question: str,
+        preferences: list[str],
+        sources: list[SearchResult],
+        fallback_reason: str,
+    ) -> str:
         if not sources:
             return (
                 "## Evidence-backed answer\n\n"
@@ -241,13 +313,20 @@ class FinancialAgent:
             )
         terms = set(tokenize(question)) | {term for preference in preferences for term in tokenize(preference)}
         bullets = []
-        for source in sources[:5]:
+        seen_excerpts: set[str] = set()
+        for source in sources:
             quote = source.evidence.text if source.evidence.source_type == "market_data" else FinancialAgent._best_excerpt(source.evidence.text, terms)
+            normalized_quote = re.sub(r"\W+", " ", quote.lower()).strip()
+            if normalized_quote in seen_excerpts:
+                continue
+            seen_excerpts.add(normalized_quote)
             bullets.append(f"- {quote} {source.citation.label}")
+            if len(bullets) == 5:
+                break
         preference_line = f"\n\nApplied remembered preferences: {', '.join(preferences)}." if preferences else ""
         return (
             "## Evidence-backed answer\n\n"
-            "Offline extractive mode is active because one or both required model credentials are unavailable. "
+            f"Offline extractive mode is active because the full two-model remote path was unavailable ({fallback_reason}). "
             "The following are retrieved source excerpts, not a synthesized investment recommendation.\n\n"
             + "\n".join(bullets)
             + preference_line

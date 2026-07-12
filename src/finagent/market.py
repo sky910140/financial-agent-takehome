@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -58,11 +59,13 @@ def download_index_history(
 
     if not rows:
         raise RuntimeError("Market download returned no rows. Check network access and symbol.")
+    ordered_rows = [rows[key] for key in sorted(rows)]
+    _validate_market_rows(ordered_rows)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["date", "close", "volume"])
         writer.writeheader()
-        writer.writerows(rows[key] for key in sorted(rows))
+        writer.writerows(ordered_rows)
     metadata = {
         "symbol": symbol,
         "source_name": "Tencent Finance K-line API",
@@ -73,6 +76,7 @@ def download_index_history(
         "coverage_start": min(rows),
         "coverage_end": max(rows),
         "fields": {"close": "daily close", "volume": "daily volume as returned by source"},
+        "sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
     }
     Path(f"{output_path}.meta.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     return len(rows)
@@ -92,6 +96,11 @@ def download_major_indices(output_dir: Path, *, start_year: int = 2005, end_year
 
 
 def market_snapshot(path: Path, *, start: str | None = None, end: str | None = None) -> MarketSnapshot:
+    meta_path = Path(f"{path}.meta.json")
+    metadata = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    expected_checksum = metadata.get("sha256")
+    if expected_checksum and hashlib.sha256(path.read_bytes()).hexdigest() != expected_checksum:
+        raise ValueError(f"Market CSV checksum does not match metadata: {path}")
     with path.open(encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fieldnames = set(reader.fieldnames or [])
@@ -99,14 +108,13 @@ def market_snapshot(path: Path, *, start: str | None = None, end: str | None = N
         if missing_columns:
             raise ValueError(f"Market CSV missing required columns: {', '.join(sorted(missing_columns))}")
         rows = list(reader)
+    _validate_market_rows(rows)
     selected = [row for row in rows if (start is None or row["date"] >= start) and (end is None or row["date"] <= end)]
     if len(selected) < 2:
         raise ValueError("At least two market observations are required for the requested period")
     first, last = selected[0], selected[-1]
     start_close = float(first["close"])
     end_close = float(last["close"])
-    meta_path = Path(f"{path}.meta.json")
-    metadata = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
     return MarketSnapshot(
         symbol=str(metadata.get("symbol", path.stem)),
         start_date=first["date"],
@@ -117,3 +125,21 @@ def market_snapshot(path: Path, *, start: str | None = None, end: str | None = N
         average_volume=sum(float(row["volume"]) for row in selected) / len(selected),
         source_url=str(metadata.get("source_url", "local CSV; metadata unavailable")),
     )
+
+
+def _validate_market_rows(rows: list[dict[str, str]]) -> None:
+    previous_date: date | None = None
+    for line_number, row in enumerate(rows, start=2):
+        try:
+            current_date = date.fromisoformat(row["date"])
+            close = float(row["close"])
+            volume = float(row["volume"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid market row at CSV line {line_number}") from exc
+        if previous_date is not None and current_date <= previous_date:
+            raise ValueError("Market dates must be strictly increasing with no duplicates")
+        if close <= 0:
+            raise ValueError(f"Market close must be positive at CSV line {line_number}")
+        if volume < 0:
+            raise ValueError(f"Market volume cannot be negative at CSV line {line_number}")
+        previous_date = current_date

@@ -1,129 +1,215 @@
-# Financial Agent Take-Home
+# Evidence-First Financial Agent
+
+[![CI](https://github.com/sky910140/financial-agent-takehome/actions/workflows/ci.yml/badge.svg)](https://github.com/sky910140/financial-agent-takehome/actions/workflows/ci.yml)
 
 [中文](README.md) | English
 
-An evidence-first personal financial research agent for public financial documents and China index history. It answers from local SEC 10-K chunks and optional public-web snippets, then renders every source with a URL and locator. It is intentionally small enough to inspect and run live.
+A locally runnable, traceable, and verifiable personal financial research agent. It retrieves sourced evidence from SEC 10-K filings, major A-share indices, and optional public Web results before `doubao-seed-evolving` drafts an answer and DeepSeek V4 plans and verifies it. If remote stages, citations, or numeric checks fail, the system explicitly falls back to an offline extractive answer.
 
-## What it demonstrates
+This project does not provide investment advice, execute trades, or treat model training knowledge as a current data source.
 
-- Public web search capability via DuckDuckGo HTML results, explicitly labelled `web_search` in citations.
-- 20+ years of CSI 300 (`sh000300`) daily close and volume, fetched from Tencent Finance in annual windows with a reproducible metadata manifest.
-- A SEC-compliant downloader for the most recent 10-K filings of Apple, Microsoft, NVIDIA, Amazon, Alphabet, Tesla, JPMorgan, Berkshire Hathaway, Walmart, and Exxon Mobil. `--years 5` gets five filings per company when present in the SEC recent-submission feed.
-- Local BM25 retrieval over filing chunks. Every chunk retains source URL, filing date, document ID, accession locator, and chunk ID.
-- Long-term, user-scoped preference memory for explicit statements such as “I care about liquidity risk and debt maturity.”
-- A two-model agent loop: DeepSeek V4 plans and verifies citations; `doubao-seed-evolving` drafts from retrieved evidence. No third primary model is used. When either key is absent, the app returns an explicit offline extractive answer instead of pretending an LLM ran.
-- Markdown, JSON, and safe standalone HTML report output, each with a source list; a non-secret execution trace supports demos.
+## Verifiable Snapshot
 
-This is a research assistant, not investment advice.
+| Area | Current result |
+| --- | --- |
+| SEC corpus | Latest 10-K for 10 companies, 3,978 searchable chunks |
+| China market data | CSI 300, Shanghai Composite, Shenzhen Component, 20+ years of daily close and volume |
+| Retrieval evaluation | 5 golden questions, Hit@5 = 5/5 |
+| Automated tests | 44/44 passing, 88% coverage |
+| Multi-model path | DeepSeek planning → Doubao drafting → DeepSeek verification |
+| Output formats | Markdown, JSON, self-contained safe HTML |
+| Failure behavior | Explicit fallback for model, network, citation, or numeric-guard failures |
 
-## Quick start
+## Architecture
 
-Prerequisite: Python 3.11+ (tested with Python 3.14). The runtime itself has no third-party dependency.
+```mermaid
+flowchart TB
+    U["Question + company + user ID"] --> M["Explicit preference memory"]
+    M --> P["DeepSeek V4<br/>bounded retrieval planning"]
+
+    subgraph DATA["Sourced data and evidence"]
+        S["Local SEC 10-K index"]
+        K["A-share index CSV + SHA-256"]
+        W["Optional Web Search snippets"]
+    end
+
+    P --> R["BM25 retrieval / deterministic market calculation"]
+    S --> R
+    K --> R
+    W --> R
+    R --> E["Numbered evidence [S1]...[S#]<br/>URL + date + accession + chunk ID"]
+    E --> A["Doubao<br/>evidence-only draft"]
+    A --> V["DeepSeek V4<br/>verification against the same evidence"]
+    V --> G{"Program guards<br/>remote stages + citations + numbers"}
+    G -->|"pass"| O["Markdown / JSON / HTML<br/>answer + used sources + trace"]
+    G -->|"fail"| F["Offline extractive fallback<br/>with an explicit reason"]
+```
+
+The key design choice is not simply calling two models. It is separating responsibilities and keeping the final trust decision in deterministic code. See [DESIGN.md](DESIGN.md) for the full tradeoff discussion.
+
+## Run in Five Minutes
+
+Python 3.11+ is required. The runtime has no mandatory third-party dependency. The checked-in market files and SEC retrieval index make the core demo runnable without downloading external data.
 
 ```powershell
+git clone https://github.com/sky910140/financial-agent-takehome.git
+cd financial-agent-takehome
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e . --no-build-isolation
+python -m pip install -e .
+```
+
+Start with two fully offline, deterministic checks:
+
+```powershell
+# 20-year CSI 300 period snapshot
+python -m finagent market --file data/market/csi300.csv --start 2006-07-10 --end 2026-07-10
+
+# Retrieval regression evaluation
+python -m finagent eval-retrieval
+```
+
+The SEC question path also runs without model credentials:
+
+```powershell
+python -m finagent ask "Summarize liquidity and debt-related risks." --company Apple --trace
+```
+
+Without credentials, the output explicitly states `Offline extractive mode` while preserving the SEC URL, filing date, accession, and chunk ID.
+
+## Configure the Two Required Models
+
+```powershell
 Copy-Item .env.example .env
 ```
 
-Set a real SEC-compliant identity before downloading filings. The value must include an application name and contact email.
+Fill in the following variables. `.env` is Git-ignored and must never be committed.
 
-```powershell
-$env:SEC_USER_AGENT = "FinancialAgent your-email@example.com"
-python -m finagent download-markets --output-dir data/market --start-year 2005
-python scripts/download_sec_10k.py --years 1 --output-dir sample_docs/sec_10k
-python -m finagent index --docs-dir sample_docs/sec_10k --output data/index/filing_chunks.json
-```
-
-`download-markets` requests CSI 300, Shanghai Composite, and Shenzhen Component as separate auditable files. Each request can also be retried independently with `download-market --symbol sh000001` or `--symbol sz399001`. The checked-in market CSVs and metadata support offline market demos; see `data/market/README.md`. The first SEC download collects ten companies' latest 10-Ks. To collect five annual filings per company, use `--years 5`; allow more time and ensure the identity is your own. Raw SEC documents, generated filing indexes, and user memory remain ignored by Git but are reproduced by the documented commands.
-
-Run an offline, fully cited demo without any model key:
-
-```powershell
-python -m finagent ask "Summarize liquidity and debt-related risks." --company Apple --user demo-reviewer --trace
-python -m finagent market --file data/market/csi300.csv --start 2006-07-10 --end 2026-07-10
-python -m finagent market --file data/market/sse_composite.csv --start 2006-07-10 --end 2026-07-10
-```
-
-To also search public web results, make that choice visible in the answer:
-
-```powershell
-python -m finagent ask "What did Apple disclose about competition?" --company Apple --web
-```
-
-## Model configuration
-
-Copy `.env.example` to `.env`, then supply only the two permitted primary model credentials:
-
-```text
-DOUBAO_API_KEY=...
+```dotenv
+DOUBAO_API_KEY=your_Ark_API_key
+DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
 DOUBAO_MODEL=doubao-seed-evolving
-DEEPSEEK_API_KEY=...
+
+DEEPSEEK_API_KEY=your_DeepSeek_API_key
+DEEPSEEK_BASE_URL=https://api.deepseek.com/chat/completions
 DEEPSEEK_MODEL=deepseek-v4-pro
 ```
 
-The default endpoints are Ark's OpenAI-compatible chat endpoint and DeepSeek's chat endpoint; override `DOUBAO_BASE_URL` or `DEEPSEEK_BASE_URL` only if the provider's deployment endpoint differs. Keys are read from environment or `.env`, never logged, and `.env` is ignored by Git.
-
-With both keys configured, the execution trace should show:
-
-```text
-planning: deepseek / deepseek-v4-pro / remote=True
-analysis: doubao / doubao-seed-evolving / remote=True
-verification: deepseek / deepseek-v4-pro / remote=True
-```
-
-If a remote call fails or its answer has no valid evidence label, the agent falls back to the local extractive response. This is intentional: availability must not become unsupported financial prose.
-
-Before a live interview, verify both configured credentials without sending any filing, market data, or user question:
+Verify connectivity first, then require the complete remote path:
 
 ```powershell
 python -m finagent verify-models
+python -m finagent smoke-demo
 ```
 
-It sends only a fixed `READY` connectivity prompt to each provider and exits with code 2 when either required model is unavailable.
-Every remote completion has a 600-token output budget. This keeps the three sequential stages practical for an interactive CLI; it does not truncate the retrieved source evidence supplied to the models.
+`verify-models` sends only a fixed `READY` request and no financial documents. `smoke-demo` exits successfully only when planning, drafting, and verification all use the remote models and the final citation and numeric guards pass.
 
-## Data and provenance
+Expected trace:
 
-| Dataset | Loader | Local artefacts | Evidence fields |
-| --- | --- | --- | --- |
-| CSI 300, Shanghai Composite, Shenzhen Component daily close and volume | Tencent Finance K-line endpoint, annual windows | `data/market/csi300.csv`, `sse_composite.csv`, `szse_component.csv`, each with `.meta.json` | source endpoint, every request URL, download timestamp, coverage, row count |
-| SEC 10-K filings | `data.sec.gov` submissions plus SEC Archives | `sample_docs/sec_10k/*.html`, `manifest.jsonl`, `download_report.json` | ticker, CIK, form, filing/report date, accession, primary document, archive URL, fetch time |
-| Filing chunks | local HTML-to-text + deterministic chunker | `data/index/filing_chunks.json` | chunk/document ID, text, source URL, date, source type, accession locator |
-| Public web | DuckDuckGo HTML query, only with `--web` | in-memory for this request | result URL, title, result snippet, `web_search` source type |
+```text
+planning: deepseek / deepseek-v4-pro / remote=True / ok
+analysis: doubao / doubao-seed-evolving / remote=True / ok
+verification: deepseek / deepseek-v4-pro / remote=True / ok
+```
 
-The agent uses a transparent BM25-style lexical retriever instead of an embedding service so a reviewer can rerun the path offline and inspect ranking input. It scopes filings with `--company` before retrieval; the company name or ticker is matched against manifest-derived title and ID.
-
-## Reproducible questions
-
-After the three setup commands above:
+## Representative Demos
 
 ```powershell
-python -m finagent ask "What are this company's main risk factors?" --company Tesla
-python -m finagent ask "How did revenue or profitability change compared with the prior year?" --company Microsoft
-python -m finagent ask "What does the company say about competition?" --company Amazon
-python -m finagent ask "Summarize liquidity or debt-related risks." --company Apple
-python -m finagent ask "What evidence supports this answer?" --company Walmart
-python -m finagent ask "Summarize liquidity or debt-related risks." --company Apple --html > apple-liquidity-report.html
+# Main risk factors
+python -m finagent ask "What are this company's main risk factors?" --company Tesla --trace
+
+# Prior-year revenue and profitability change
+python -m finagent ask "How did revenue or profitability change compared with the prior year?" --company Microsoft --trace
+
+# Competition disclosures
+python -m finagent ask "What does the company say about competition?" --company Amazon --trace
+
+# Long-term preference memory
 python -m finagent ask "I care most about liquidity risk and debt maturity." --company JPM --user alice
-python -m finagent ask "What should I focus on?" --company JPM --user alice
+python -m finagent ask "What should I focus on?" --company JPM --user alice --json --trace
+
+# Optional public Web discovery; snippets remain labelled web_search
+python -m finagent ask "Apple 10-K SEC filing" --company Apple --web --trace
 ```
 
-The first `alice` request persists only explicit preferences in `data/memory/preferences.json`; the second reapplies them to its retrieval query. `DEMO_OUTPUTS.md` contains a recorded output from the first market and Apple-risk commands using the 2026-07-10 data snapshot.
+Recorded commands and outputs are available in [DEMO_OUTPUTS.md](DEMO_OUTPUTS.md).
 
-For machine integration, append `--json`; for a self-contained browser report append `--html`; for the reviewer-facing explanation of model execution append `--trace`. HTML output escapes all dynamic text, emits links only for absolute `http/https` source URLs, and includes a restrictive CSP meta policy. `--json` and `--html` are mutually exclusive.
+## Output Formats
 
-## Tests
+Markdown is the default. Use `--json` for integrations, `--html` for a self-contained browser report, and `--trace` for non-sensitive execution status.
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m unittest discover -s tests -v
-python -m compileall -q src scripts tests
+python -m finagent ask `
+  "Summarize liquidity and debt-related risks." `
+  --company Apple `
+  --html `
+  --trace |
+  Set-Content -Encoding utf8 apple-liquidity-report.html
+
+Start-Process .\apple-liquidity-report.html
 ```
 
-The test suite covers source-preserving chunks, relevant retrieval and citations, market calculations and provenance, memory persistence, offline model state, SEC manifest creation, index-to-agent integration, web evidence labelling, SEC identity validation, and safe HTML rendering/CLI output. `requirements-dev.txt` includes optional `pytest` and `coverage` for environments that use them.
+The HTML renderer escapes dynamic text, links only absolute HTTP(S) sources, and includes a restrictive Content Security Policy. `--json` and `--html` are mutually exclusive.
 
-## Design and limits
+## Data and Provenance
 
-Read [DESIGN.md](DESIGN.md) for architecture, tradeoffs, failure modes, and prioritized next work. [PROJECT_FILES_CN.md](PROJECT_FILES_CN.md) is the complete Chinese file-and-operation reference; [REMEDIATION_CN.md](REMEDIATION_CN.md) maps the external review to implementation decisions. The key limitations are lexical rather than semantic retrieval, flattening of complex SEC tables, non-authoritative search snippets, a local single-process memory store, and no claim that offline extraction is a model-generated analysis.
+| Dataset | Checked-in artifact | Preserved provenance |
+| --- | --- | --- |
+| SEC 10-K | `data/index/filing_chunks.json` | company, CIK, filing/report date, accession, SEC URL, document/chunk ID |
+| CSI 300, Shanghai Composite, Shenzhen Component | `data/market/*.csv` and `.meta.json` | endpoint, every yearly request URL, download time, coverage, SHA-256 |
+| Public Web | request-local `web_search` evidence | title, result URL, snippet; never silently promoted to parsed SEC evidence |
+| User preferences | local `data/memory/preferences.json` | explicit allow-listed preferences only; never committed |
+
+Raw SEC HTML is excluded to keep the repository small. The download and rebuild path remains reproducible:
+
+```powershell
+$env:SEC_USER_AGENT = "FinancialAgent your-email@example.com"
+python scripts/download_sec_10k.py --years 1 --output-dir sample_docs/sec_10k
+python -m finagent index --docs-dir sample_docs/sec_10k --output data/index/filing_chunks.json
+python -m finagent download-markets --output-dir data/market --start-year 2005
+```
+
+## Tests and Evaluation
+
+```powershell
+python -m pip install -r requirements-dev.txt
+$env:PYTHONPATH = "src"
+python -m coverage run -m unittest discover -s tests
+python -m coverage report --fail-under=80
+python -m compileall -q src scripts tests
+python -m finagent eval-retrieval
+```
+
+Coverage includes SEC recent/history downloads, incomplete-download exit behavior, XBRL noise filtering, BM25 and financial phrase handling, market date and checksum validation, preference memory, per-stage model budgets, empty model responses, mandatory verification, numeric drift, citation convergence, Web evidence classification, CLI errors, and safe HTML rendering.
+
+GitHub Actions runs compilation, tests, and retrieval evaluation on Python 3.11 and 3.13 without model credentials or external network access.
+
+## Repository Layout
+
+```text
+src/finagent/                 Agent, retrieval, models, data, memory, and output
+scripts/                      SEC and market download entry points
+tests/test_finagent.py        Unit and integration tests
+evals/retrieval_cases.json    Golden retrieval questions
+data/index/                   Checked-in SEC retrieval index
+data/market/                  Three index CSV files and provenance metadata
+DESIGN.md                     1-2 page architecture and tradeoff document
+DEMO_OUTPUTS.md               Reproducible commands and recorded outputs
+docs/PROJECT_STRUCTURE_CN.md  File-level implementation reference in Chinese
+```
+
+## Known Boundaries
+
+- BM25 is interpretable lexical retrieval, not open-domain semantic search. The current 5/5 result applies only to five golden questions.
+- Flattened HTML cannot preserve every complex financial-table relationship. Numeric claims should be checked against the original filing; an XBRL fact layer is the next priority.
+- Public Web results are variable and snippets are not first-party financial evidence.
+- The numeric guard rejects values absent from the supplied evidence but does not prove semantic entailment for every non-numeric claim.
+- Local preference memory has no authentication, encryption, concurrency control, or deletion API and is not production storage.
+- The current interface is CLI plus static HTML rather than a multi-turn chat UI, prioritizing reproducibility, citations, and explicit failure behavior.
+
+Further reading:
+
+- [System design](DESIGN.md)
+- [Reproducible demo outputs](DEMO_OUTPUTS.md)
+- [Project structure and implementation map](docs/PROJECT_STRUCTURE_CN.md)
+- [Market data notes](data/market/README.md)

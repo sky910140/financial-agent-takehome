@@ -10,17 +10,37 @@ from typing import Iterable
 from finagent.sources import Citation, EvidenceChunk, SearchResult
 
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:[-'][a-z0-9]+)?|[\u4e00-\u9fff]+", re.IGNORECASE)
+ENGLISH_STOPWORDS = {
+    "a", "about", "an", "and", "are", "as", "company", "company's", "did", "does",
+    "for", "how", "in", "is", "main", "of", "on", "or", "say", "summarize", "the",
+    "this", "to", "what", "with",
+}
+FINANCIAL_PHRASES = (
+    "capital resources",
+    "cash flow",
+    "debt maturity",
+    "marketable securities",
+    "net income",
+    "operating income",
+    "prior year",
+    "risk factors",
+)
 
 
 def tokenize(text: str) -> list[str]:
     tokens: list[str] = []
-    for match in TOKEN_RE.findall(text.lower()):
+    lowered = text.lower()
+    for match in TOKEN_RE.findall(lowered):
         if "\u4e00" <= match[0] <= "\u9fff":
             tokens.extend(match[index:index + 2] for index in range(len(match) - 1))
             if len(match) == 1:
                 tokens.append(match)
         else:
-            tokens.append(match)
+            if match not in ENGLISH_STOPWORDS:
+                tokens.append(match)
+            if "-" in match:
+                tokens.extend(part for part in match.split("-") if part and part not in ENGLISH_STOPWORDS)
+    tokens.extend(phrase.replace(" ", "_") for phrase in FINANCIAL_PHRASES if phrase in lowered)
     return tokens
 
 

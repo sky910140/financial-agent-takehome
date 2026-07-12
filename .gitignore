@@ -1,10 +1,17 @@
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .coverage
 .venv/
 .env
+build/
+dist/
+/apple-liquidity-report.html
 data/*
+!data/index/
+data/index/*
+!data/index/filing_chunks.json
 !data/market/
 data/market/*
 !data/market/README.md

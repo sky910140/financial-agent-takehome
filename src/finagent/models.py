@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 
 MAX_COMPLETION_TOKENS = 600
+DEFAULT_TIMEOUT_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -45,20 +46,35 @@ class ModelGateway:
             },
         }
 
-    def complete(self, provider: str, system: str, user: str) -> ModelResponse:
+    def complete(
+        self,
+        provider: str,
+        system: str,
+        user: str,
+        *,
+        max_tokens: int = MAX_COMPLETION_TOKENS,
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    ) -> ModelResponse:
         if provider not in self.providers:
             raise ValueError(f"Unsupported primary model provider: {provider}")
+        if max_tokens < 1:
+            raise ValueError("max_tokens must be positive")
+        if timeout < 1:
+            raise ValueError("timeout must be positive")
         settings = self.providers[provider]
         key = settings["key"]
         if not key:
             return ModelResponse("offline", str(settings["model"]), "", False, "API key is not configured")
-        payload = json.dumps({
+        request_body: dict[str, object] = {
             "model": settings["model"],
             "temperature": 0,
             # Keep the three sequential model stages responsive for an interactive CLI.
-            "max_tokens": MAX_COMPLETION_TOKENS,
+            "max_tokens": max_tokens,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        }).encode("utf-8")
+        }
+        if provider == "doubao":
+            request_body["thinking"] = {"type": "disabled"}
+        payload = json.dumps(request_body).encode("utf-8")
         request = Request(
             str(settings["base_url"]),
             data=payload,
@@ -66,9 +82,11 @@ class ModelGateway:
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         )
         try:
-            with urlopen(request, timeout=60) as response:
+            with urlopen(request, timeout=timeout) as response:
                 body = json.loads(response.read().decode("utf-8"))
             text = body["choices"][0]["message"]["content"].strip()
+            if not text:
+                return ModelResponse("offline", str(settings["model"]), "", False, "Remote model returned empty content")
             return ModelResponse(provider, str(settings["model"]), text, True)
         except HTTPError as exc:
             return ModelResponse("offline", str(settings["model"]), "", False, f"HTTP {exc.code}: remote request unavailable")

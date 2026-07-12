@@ -6,8 +6,18 @@ build-backend = "setuptools.build_meta"
 name = "financial-agent-takehome"
 version = "0.1.0"
 description = "Evidence-first financial research agent for the take-home interview"
+readme = "README_EN.md"
 requires-python = ">=3.11"
 dependencies = []
+keywords = ["financial-agent", "sec-10-k", "rag", "bm25", "multi-model"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Repository = "https://github.com/sky910140/financial-agent-takehome"
 
 [project.scripts]
 finagent = "finagent.cli:main"
