@@ -377,7 +377,8 @@ def _render_html_blocks(markdown: str) -> str:
 
     def flush_paragraph() -> None:
         if paragraph:
-            blocks.append(f"<p>{'<br>\n'.join(escape(line) for line in paragraph)}</p>")
+            escaped_paragraph = "<br>\n".join(escape(line) for line in paragraph)
+            blocks.append(f"<p>{escaped_paragraph}</p>")
             paragraph.clear()
 
     def flush_list() -> None:
