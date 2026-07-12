@@ -16,7 +16,7 @@ This project does not provide investment advice, execute trades, or treat model 
 | China market data | CSI 300, Shanghai Composite, Shenzhen Component, 20+ years of daily close and volume |
 | Retrieval evaluation | 5 golden questions, Hit@5 = 5/5 |
 | Golden answer audit | 10 Q&A cases, 13/13 sentences verified against cited evidence phrases |
-| Automated tests | 64/64 passing, 88% total coverage |
+| Automated tests | 64/64 passing, 90% total coverage |
 | Python compatibility | 3.11, 3.13, and 3.14 verified locally |
 | Multi-model path | DeepSeek planning → Doubao drafting → DeepSeek verification |
 | Strict remote path | Doubao + DeepSeek three-stage smoke reached `remote_verified` |
